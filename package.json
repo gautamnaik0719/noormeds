@@ -1,0 +1,12 @@
+{
+  "name": "noor-meds",
+  "version": "1.0.0",
+  "main": "doodle.js",
+  "scripts": {
+  "start": "node doodle.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}
