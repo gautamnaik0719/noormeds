@@ -258,7 +258,7 @@ function renderInventoryPage({ resultsSection, name, locationOptions }) {
     <form action="/add-medication" method="POST">
       <label>Medication Name</label>
       <input type="text" name="name" required>
-      <label>Dose</label>
+      <label>Doses</label>
       <input type="text" name="dose" required>
       <label>Location</label>
       <select name="location" required>
@@ -329,7 +329,7 @@ app.get("/search", async (req, res) => {
     resultsSection = `
       <form id="updateForm" action="/update" method="POST">
         <table>
-          <tr><th>Name</th><th>Doses</th><th>Location</th><th>Quantity</th><th>Take</th></tr>
+          <tr><th>Name</th><th>Dose</th><th>Location</th><th>Quantity</th><th>Amount Used</th></tr>
           ${data
             .map(
               (item, i) => `
