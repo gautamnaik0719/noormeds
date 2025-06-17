@@ -165,7 +165,7 @@ function renderInventoryPage({ resultsSection, name, locationOptions }) {
       transition: background 0.2s;
     }
     button:hover {
-      background: #E05A1A;
+      background:rgb(198, 101, 55);
     }
     table {
       width: 100%;
@@ -259,7 +259,7 @@ function renderInventoryPage({ resultsSection, name, locationOptions }) {
       <label>Medication Name</label>
       <input type="text" name="name" required>
       <label>Dose</label>
-      <input type="text" name="doses" required>
+      <input type="text" name="dose" required>
       <label>Location</label>
       <select name="location" required>
         <option value="">-- Select Location --</option>
