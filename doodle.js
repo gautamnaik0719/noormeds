@@ -454,11 +454,11 @@ app.post("/add-medication", async (req, res) => {
   for (const sheetName of sheetNames) {
     const data = await getSheetData(sheetName);
     if (data.length > 0) {
-      const rowIndex = data
-        .slice(1)
-        .findIndex(
-          (row) => row[0] === name && row[1] === doses && row[2] === location,
-        );
+      const rowIndex = data.slice(1).findIndex(row =>
+      row[0] && row[0].toLowerCase() === name.toLowerCase() &&
+      row[1] && row[1].toLowerCase() === doses.toLowerCase() &&
+      row[2] && row[2].toLowerCase() === location.toLowerCase()
+      );
       if (rowIndex !== -1) {
         const actualRowIndex = rowIndex + 2;
         const currentQty = parseInt(data[rowIndex + 1][3]) || 0;
