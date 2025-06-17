@@ -448,7 +448,7 @@ app.post("/update", async (req, res) => {
 });
 
 app.post("/add-medication", async (req, res) => {
-  const { name, doses, location, quantity } = req.body;
+  const { name, dose, location, quantity } = req.body;
   const sheetNames = ["File Meds", "Closet Meds"];
   let found = false;
   for (const sheetName of sheetNames) {
