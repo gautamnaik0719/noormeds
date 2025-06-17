@@ -456,7 +456,7 @@ app.post("/add-medication", async (req, res) => {
     if (data.length > 0) {
       const rowIndex = data.slice(1).findIndex(row =>
       (row[0] || '').toLowerCase() === (name || '').toLowerCase() &&
-      (row[1] || '').toLowerCase() === (doses || '').toLowerCase() &&
+      (row[1] || '').toLowerCase() === (dose || '').toLowerCase() &&
       (row[2] || '').toLowerCase() === (location || '').toLowerCase()
       );
 
@@ -465,7 +465,7 @@ app.post("/add-medication", async (req, res) => {
         const currentQty = parseInt(data[rowIndex + 1][3]) || 0;
         const newQty = currentQty + parseInt(quantity);
         console.log(
-          `Adding to existing: ${name} ${doses} at ${location} in ${sheetName}. Old qty: ${currentQty}, add: ${quantity}, new qty: ${newQty}`,
+          `Adding to existing: ${name} ${dose} at ${location} in ${sheetName}. Old qty: ${currentQty}, add: ${quantity}, new qty: ${newQty}`,
         );
         await sheets.spreadsheets.values.update({
           spreadsheetId,
@@ -480,13 +480,13 @@ app.post("/add-medication", async (req, res) => {
   }
   if (!found) {
     console.log(
-      `Adding NEW: ${name} ${doses} at ${location} qty ${quantity} to File Meds`,
+      `Adding NEW: ${name} ${dose} at ${location} qty ${quantity} to File Meds`,
     );
     await sheets.spreadsheets.values.append({
       spreadsheetId,
       range: "File Meds!A:D",
       valueInputOption: "RAW",
-      resource: { values: [[name, doses, location, quantity]] },
+      resource: { values: [[name, dose, location, quantity]] },
     });
   }
   res.redirect("/");
