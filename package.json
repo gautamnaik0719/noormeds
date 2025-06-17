@@ -3,10 +3,15 @@
   "version": "1.0.0",
   "main": "doodle.js",
   "scripts": {
-  "start": "node doodle.js"
+    "start": "node doodle.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": ""
+  "description": "",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "googleapis": "^150.0.1"
+  }
 }
