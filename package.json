@@ -1,6 +1,7 @@
 {
   "name": "noor-meds",
   "version": "1.0.0",
+  "type": "module",
   "main": "doodle.js",
   "scripts": {
     "start": "node doodle.js"
