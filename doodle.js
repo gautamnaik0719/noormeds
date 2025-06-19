@@ -5,11 +5,13 @@ import cors from "cors";
 const app = express();
 const port = 3000;
 
+// Middleware setup
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors({ origin: "*" }));
-app.use(express.static(".")); // For serving logo if you add it
+app.use(express.static("public")); // Serve static files (e.g., logo) from 'public' folder
 
+// Google Sheets setup
 const creds = JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS);
 const spreadsheetId = process.env.GOOGLE_SHEET_ID;
 
@@ -29,22 +31,48 @@ try {
 
 const sheets = google.sheets({ version: "v4", auth });
 
+// Utility: Get sheet ID by name (robust to invisible/trailing spaces and case)
 async function getSheetIdByName(sheetName) {
   try {
     const response = await sheets.spreadsheets.get({
       spreadsheetId,
       fields: "sheets.properties",
     });
+    console.log("Sheets returned by API:");
+    response.data.sheets.forEach((s) => {
+      console.log(
+        `Title: "${s.properties.title}", ID: ${s.properties.sheetId}`,
+      );
+    });
+
+    // Log all available sheet names for debugging
+    response.data.sheets.forEach((s) => {
+      console.log("Found sheet:", `"${s.properties.title}"`);
+    });
+
+    // Compare using trim() and toLowerCase() to avoid invisible/trailing space issues
     const sheet = response.data.sheets.find(
-      (s) => s.properties.title === sheetName,
+      (s) =>
+        s.properties.title.trim().toLowerCase() ===
+        sheetName.trim().toLowerCase(),
     );
-    return sheet ? sheet.properties.sheetId : null;
+    console.log(sheet);
+
+    if (!sheet) {
+      console.error(
+        `Sheet with name "${sheetName}" not found. Double-check for extra spaces or invisible characters.`,
+      );
+    }
+
+    console.log(sheet.properties.sheetId);
+    return sheet.properties.sheetId;
   } catch (error) {
     console.error("Error fetching sheet ID:", error);
     return null;
   }
 }
 
+// Utility: Fetch sheet data (defaults to columns A:D)
 async function getSheetData(sheetName, range = "A:D") {
   try {
     const response = await sheets.spreadsheets.values.get({
@@ -58,6 +86,7 @@ async function getSheetData(sheetName, range = "A:D") {
   }
 }
 
+// Utility: Filter data by medication name (case-insensitive)
 async function getFilteredData(searchName) {
   const sheetNames = ["File Meds", "Closet Meds"];
   const allData = [];
@@ -68,9 +97,9 @@ async function getFilteredData(searchName) {
         if (row.length >= 4) {
           allData.push({
             sheetName,
-            rowIndex: index + 2,
+            rowIndex: index + 2, // +2: skip header and zero-based index
             name: row[0],
-            doses: row[1],
+            dose: row[1],
             location: row[2],
             quantity: row[3],
           });
@@ -80,10 +109,11 @@ async function getFilteredData(searchName) {
   }
   if (!searchName) return [];
   return allData.filter((item) =>
-    item.name.toLowerCase().includes(searchName.toLowerCase()),
+    (item.name || "").toLowerCase().includes((searchName || "").toLowerCase()),
   );
 }
 
+// Renders the inventory page with optional search results
 function renderInventoryPage({ resultsSection, name, locationOptions }) {
   return `
 <!DOCTYPE html>
@@ -165,7 +195,7 @@ function renderInventoryPage({ resultsSection, name, locationOptions }) {
       transition: background 0.2s;
     }
     button:hover {
-      background:rgb(198, 101, 55);
+      background: #E05A1A;
     }
     table {
       width: 100%;
@@ -243,7 +273,7 @@ function renderInventoryPage({ resultsSection, name, locationOptions }) {
 </head>
 <body>
   <header>
-    <img src="noor-logo.jpg" alt="SLO Noor Foundation Logo" class="logo">
+    <img src="/noor-logo.jpg" alt="SLO Noor Foundation Logo" class="logo">
     <h1>Check out our Medication Inventory!</h1>
   </header>
   <div class="container">
@@ -258,7 +288,7 @@ function renderInventoryPage({ resultsSection, name, locationOptions }) {
     <form action="/add-medication" method="POST">
       <label>Medication Name</label>
       <input type="text" name="name" required>
-      <label>Doses</label>
+      <label>Dose</label>
       <input type="text" name="dose" required>
       <label>Location</label>
       <select name="location" required>
@@ -335,7 +365,7 @@ app.get("/search", async (req, res) => {
               (item, i) => `
             <tr>
               <td>${item.name}</td>
-              <td>${item.doses}</td>
+              <td>${item.dose}</td>
               <td>${item.location}</td>
               <td>${item.quantity}</td>
               <td>
@@ -382,6 +412,7 @@ app.get("/search", async (req, res) => {
   res.send(renderInventoryPage({ resultsSection, name, locationOptions }));
 });
 
+// Update medication quantities and delete row if quantity reaches zero
 app.post("/update", async (req, res) => {
   const { items } = req.body;
   if (!items || !Array.isArray(items)) {
@@ -395,7 +426,8 @@ app.post("/update", async (req, res) => {
     }
     const qtyToTake = parseInt(item.qty) || 0;
     const currentQty = parseInt(item.quantity) || 0;
-    const newQty = currentQty - qtyToTake;
+    const newQty = Math.max(0, currentQty - qtyToTake);
+
     console.log(
       `Updating item: ${item.name}, current qty: ${currentQty}, qty to take: ${qtyToTake}, new qty: ${newQty}`,
     );
@@ -403,11 +435,15 @@ app.post("/update", async (req, res) => {
     if (newQty <= 0) {
       try {
         const sheetId = await getSheetIdByName(item.sheetName);
-        if (!sheetId) {
+        console.log(sheetId);
+        if (sheetId === undefined || sheetId === null) {
           console.log(`Sheet ID not found for: ${item.sheetName}`);
           continue;
         }
-        console.log(`Deleting row ${item.rowIndex} from ${item.sheetName}`);
+        console.log(
+          `Deleting row ${item.rowIndex} from ${item.sheetName} (sheetId: ${sheetId})`,
+        );
+        // Adjust for zero-based index and header row
         await sheets.spreadsheets.batchUpdate({
           spreadsheetId,
           resource: {
@@ -417,7 +453,7 @@ app.post("/update", async (req, res) => {
                   range: {
                     sheetId,
                     dimension: "ROWS",
-                    startIndex: item.rowIndex - 1,
+                    startIndex: item.rowIndex - 1, // header is row 1
                     endIndex: item.rowIndex,
                   },
                 },
@@ -447,6 +483,7 @@ app.post("/update", async (req, res) => {
   res.redirect("/");
 });
 
+// Add new medication or update existing
 app.post("/add-medication", async (req, res) => {
   const { name, dose, location, quantity } = req.body;
   const sheetNames = ["File Meds", "Closet Meds"];
@@ -454,11 +491,14 @@ app.post("/add-medication", async (req, res) => {
   for (const sheetName of sheetNames) {
     const data = await getSheetData(sheetName);
     if (data.length > 0) {
-      const rowIndex = data.slice(1).findIndex(row =>
-      (row[0] || '').toLowerCase() === (name || '').toLowerCase() &&
-      (row[1] || '').toLowerCase() === (dose || '').toLowerCase() &&
-      (row[2] || '').toLowerCase() === (location || '').toLowerCase()
-      );
+      const rowIndex = data
+        .slice(1)
+        .findIndex(
+          (row) =>
+            (row[0] || "").toLowerCase() === (name || "").toLowerCase() &&
+            (row[1] || "").toLowerCase() === (dose || "").toLowerCase() &&
+            (row[2] || "").toLowerCase() === (location || "").toLowerCase(),
+        );
 
       if (rowIndex !== -1) {
         const actualRowIndex = rowIndex + 2;
