@@ -9,7 +9,7 @@ const port = 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors({ origin: "*" }));
-app.use(express.static("public")); // Serve static files (e.g., logo) from 'public' folder
+app.use(express.static(".")); // Serve static files (e.g., logo) from 'public' folder
 
 // Google Sheets setup
 const creds = JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS);
