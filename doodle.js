@@ -5,6 +5,11 @@ import cors from "cors";
 const app = express();
 const port = 3000;
 
+// Utility: Normalize dose string by removing all spaces and lowercasing
+function normalizeDose(dose) {
+  return (dose || "").replace(/\s+/g, "").toLowerCase();
+}
+
 // Middleware setup
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -496,7 +501,7 @@ app.post("/add-medication", async (req, res) => {
         .findIndex(
           (row) =>
             (row[0] || "").toLowerCase() === (name || "").toLowerCase() &&
-            (row[1] || "").toLowerCase() === (dose || "").toLowerCase() &&
+            normalizeDose(row[1]) === normalizeDose(dose) &&
             (row[2] || "").toLowerCase() === (location || "").toLowerCase(),
         );
 
