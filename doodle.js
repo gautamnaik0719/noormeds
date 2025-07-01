@@ -292,7 +292,9 @@ function renderInventoryPage({ resultsSection, name, locationOptions }) {
     <div class="add-section-title">Add Medication to Our Inventory!</div>
     <form action="/add-medication" method="POST">
       <label>Medication Name</label>
-      <input type="text" name="name" required>
+      <input type="text" name="name" id="medNameInput" list="medNamesList" required             autocomplete="off">
+      <datalist id="medNamesList"></datalist>
+
       <label>Dose</label>
       <input type="text" name="dose" required>
       <label>Location</label>
@@ -308,6 +310,22 @@ function renderInventoryPage({ resultsSection, name, locationOptions }) {
   <footer>
     <p>© 2025 SLO Noor Foundation. All rights reserved.</p>
   </footer>
+  <script>
+  document.addEventListener("DOMContentLoaded", function() {
+    fetch("/all-med-names")
+      .then(res => res.json())
+      .then(names => {
+        const datalist = document.getElementById("medNamesList");
+        datalist.innerHTML = "";
+        names.forEach(name => {
+          const option = document.createElement("option");
+          option.value = name;
+          datalist.appendChild(option);
+        });
+      });
+  });
+  </script>
+
 </body>
 </html>
   `;
@@ -535,6 +553,20 @@ app.post("/add-medication", async (req, res) => {
     });
   }
   res.redirect("/");
+});
+
+app.get("/all-med-names", async (req, res) => {
+  const sheetNames = ["File Meds", "Closet Meds"];
+  const namesSet = new Set();
+  for (const sheetName of sheetNames) {
+    const data = await getSheetData(sheetName);
+    if (data.length > 0) {
+      data.slice(1).forEach((row) => {
+        if (row[0]) namesSet.add(row[0]);
+      });
+    }
+  }
+  res.json(Array.from(namesSet));
 });
 
 app.listen(port, () => {
