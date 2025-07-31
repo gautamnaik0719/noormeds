@@ -77,6 +77,24 @@ async function getSheetIdByName(sheetName) {
   }
 }
 
+//Utility: Log Data in Activity Records
+async function logActivity({ action, name, dose, location, quantity }) {
+  const date = new Date();
+  const formatted = date.toLocaleString("en-US", {
+    timeZone: "America/Los_Angeles",
+  });
+  // Insert at Row 2, i.e., after the header in Activity Records
+  await sheets.spreadsheets.values.insert({
+    spreadsheetId,
+    range: "Activity Records!A2",
+    valueInputOption: "RAW",
+    insertDataOption: "INSERT_ROWS",
+    resource: {
+      values: [[formatted, action, name, dose, location, quantity]],
+    },
+  });
+}
+
 // Utility: Fetch sheet data (defaults to columns A:D)
 async function getSheetData(sheetName, range = "A:D") {
   try {
@@ -401,6 +419,9 @@ app.get("/search", async (req, res) => {
                   <input type="hidden" name="items[${i}][name]" value="${item.name}">
                   <input type="hidden" name="items[${i}][quantity]" value="${item.quantity}">
                   <input type="hidden" name="items[${i}][qty]" id="qtyHidden${i}" value="0">
+                  <input type="hidden" name="items[${i}][dose]" value="${item.dose}">
+                  <input type="hidden" name="items[${i}][location]" value="${item.location}">
+
                 </div>
               </td>
             </tr>
@@ -447,26 +468,29 @@ app.post("/update", async (req, res) => {
       console.log("Missing required item fields:", item);
       continue;
     }
+
     const qtyToTake = parseInt(item.qty) || 0;
+    if (!qtyToTake) continue; // Don’t log or update if zero
+
     const currentQty = parseInt(item.quantity) || 0;
     const newQty = Math.max(0, currentQty - qtyToTake);
 
-    console.log(
-      `Updating item: ${item.name}, current qty: ${currentQty}, qty to take: ${qtyToTake}, new qty: ${newQty}`,
-    );
+    // Log the REMOVAL to Activity Records
+    await logActivity({
+      action: "REMOVE",
+      name: item.name,
+      dose: item.dose || "",
+      location: item.location || "",
+      quantity: qtyToTake, // Amount removed
+    });
 
     if (newQty <= 0) {
       try {
         const sheetId = await getSheetIdByName(item.sheetName);
-        console.log(sheetId);
         if (sheetId === undefined || sheetId === null) {
           console.log(`Sheet ID not found for: ${item.sheetName}`);
           continue;
         }
-        console.log(
-          `Deleting row ${item.rowIndex} from ${item.sheetName} (sheetId: ${sheetId})`,
-        );
-        // Adjust for zero-based index and header row
         await sheets.spreadsheets.batchUpdate({
           spreadsheetId,
           resource: {
@@ -489,9 +513,6 @@ app.post("/update", async (req, res) => {
       }
     } else {
       try {
-        console.log(
-          `Updating quantity to ${newQty} for ${item.name} in ${item.sheetName}, row ${item.rowIndex}`,
-        );
         await sheets.spreadsheets.values.update({
           spreadsheetId,
           range: `${item.sheetName}!D${item.rowIndex}`,
@@ -503,6 +524,7 @@ app.post("/update", async (req, res) => {
       }
     }
   }
+
   res.redirect("/");
 });
 
@@ -536,6 +558,8 @@ app.post("/add-medication", async (req, res) => {
           valueInputOption: "RAW",
           resource: { values: [[newQty]] },
         });
+        // <-- Log as "ADD"
+        await logActivity({ action: "ADD", name, dose, location, quantity });
         found = true;
         break;
       }
@@ -551,6 +575,8 @@ app.post("/add-medication", async (req, res) => {
       valueInputOption: "RAW",
       resource: { values: [[name, dose, location, quantity]] },
     });
+    // <-- Log as "ADD"
+    await logActivity({ action: "ADD", name, dose, location, quantity });
   }
   res.redirect("/");
 });
