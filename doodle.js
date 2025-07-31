@@ -83,12 +83,38 @@ async function logActivity({ action, name, dose, location, quantity }) {
   const formatted = date.toLocaleString("en-US", {
     timeZone: "America/Los_Angeles",
   });
-  // Insert at Row 2, i.e., after the header in Activity Records
-  await sheets.spreadsheets.values.insert({
+
+  // 1. Get the sheet id for "Activity Records"
+  const sheetId = await getSheetIdByName("Activity Records");
+  if (sheetId === undefined || sheetId === null) {
+    throw new Error('Could not find "Activity Records" sheet');
+  }
+
+  // 2. Insert a blank row after the header (at row index 1, which is the 2nd row)
+  await sheets.spreadsheets.batchUpdate({
     spreadsheetId,
-    range: "Activity Records!A2",
+    resource: {
+      requests: [
+        {
+          insertDimension: {
+            range: {
+              sheetId,
+              dimension: "ROWS",
+              startIndex: 1,
+              endIndex: 2,
+            },
+            inheritFromBefore: false,
+          },
+        },
+      ],
+    },
+  });
+
+  // 3. Write the log data into the now-empty A2 row
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: "Activity Records!A2:F2",
     valueInputOption: "RAW",
-    insertDataOption: "INSERT_ROWS",
     resource: {
       values: [[formatted, action, name, dose, location, quantity]],
     },
