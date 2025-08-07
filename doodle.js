@@ -43,33 +43,18 @@ async function getSheetIdByName(sheetName) {
       spreadsheetId,
       fields: "sheets.properties",
     });
-    console.log("Sheets returned by API:");
-    response.data.sheets.forEach((s) => {
-      console.log(
-        `Title: "${s.properties.title}", ID: ${s.properties.sheetId}`,
-      );
-    });
-
-    // Log all available sheet names for debugging
-    response.data.sheets.forEach((s) => {
-      console.log("Found sheet:", `"${s.properties.title}"`);
-    });
-
     // Compare using trim() and toLowerCase() to avoid invisible/trailing space issues
     const sheet = response.data.sheets.find(
       (s) =>
         s.properties.title.trim().toLowerCase() ===
         sheetName.trim().toLowerCase(),
     );
-    console.log(sheet);
-
     if (!sheet) {
       console.error(
         `Sheet with name "${sheetName}" not found. Double-check for extra spaces or invisible characters.`,
       );
+      return null;
     }
-
-    console.log(sheet.properties.sheetId);
     return sheet.properties.sheetId;
   } catch (error) {
     console.error("Error fetching sheet ID:", error);
@@ -83,14 +68,11 @@ async function logActivity({ action, name, dose, location, quantity }) {
   const formatted = date.toLocaleString("en-US", {
     timeZone: "America/Los_Angeles",
   });
-
-  // 1. Get the sheet id for "Activity Records"
   const sheetId = await getSheetIdByName("Activity Records");
   if (sheetId === undefined || sheetId === null) {
     throw new Error('Could not find "Activity Records" sheet');
   }
-
-  // 2. Insert a blank row after the header (at row index 1, which is the 2nd row)
+  // Insert a blank row after the header (Row index 1, 2nd row)
   await sheets.spreadsheets.batchUpdate({
     spreadsheetId,
     resource: {
@@ -109,8 +91,7 @@ async function logActivity({ action, name, dose, location, quantity }) {
       ],
     },
   });
-
-  // 3. Write the log data into the now-empty A2 row
+  // Write the log data into the now-empty A2 row
   await sheets.spreadsheets.values.update({
     spreadsheetId,
     range: "Activity Records!A2:F2",
@@ -336,11 +317,13 @@ function renderInventoryPage({ resultsSection, name, locationOptions }) {
     <div class="add-section-title">Add Medication to Our Inventory!</div>
     <form action="/add-medication" method="POST">
       <label>Medication Name</label>
-      <input type="text" name="name" id="medNameInput" list="medNamesList" required             autocomplete="off">
+      <input type="text" name="name" id="medNameInput" list="medNamesList" required autocomplete="off">
       <datalist id="medNamesList"></datalist>
 
       <label>Dose</label>
-      <input type="text" name="dose" required>
+      <input type="text" name="dose" id="doseInput" list="doseList" required>
+      <datalist id="doseList"></datalist>
+
       <label>Location</label>
       <select name="location" required>
         <option value="">-- Select Location --</option>
@@ -367,9 +350,30 @@ function renderInventoryPage({ resultsSection, name, locationOptions }) {
           datalist.appendChild(option);
         });
       });
+
+    // Dose suggestions
+    const medNameInput = document.getElementById("medNameInput");
+    const doseList = document.getElementById("doseList");
+    function fetchDoseSuggestions() {
+      const medName = medNameInput.value.trim();
+      doseList.innerHTML = "";
+      if (medName !== "") {
+        fetch("/doses-for-name?name=" + encodeURIComponent(medName))
+          .then(res => res.json())
+          .then(doses => {
+            doseList.innerHTML = "";
+            doses.forEach(dose => {
+              const option = document.createElement("option");
+              option.value = dose;
+              doseList.appendChild(option);
+            });
+          });
+      }
+    }
+    medNameInput.addEventListener("input", fetchDoseSuggestions);
+    medNameInput.addEventListener("change", fetchDoseSuggestions);
   });
   </script>
-
 </body>
 </html>
   `;
@@ -447,11 +451,10 @@ app.get("/search", async (req, res) => {
                   <input type="hidden" name="items[${i}][qty]" id="qtyHidden${i}" value="0">
                   <input type="hidden" name="items[${i}][dose]" value="${item.dose}">
                   <input type="hidden" name="items[${i}][location]" value="${item.location}">
-
                 </div>
               </td>
             </tr>
-          `,
+          `
             )
             .join("")}
         </table>
@@ -507,7 +510,7 @@ app.post("/update", async (req, res) => {
       name: item.name,
       dose: item.dose || "",
       location: item.location || "",
-      quantity: qtyToTake, // Amount removed
+      quantity: qtyToTake,
     });
 
     if (newQty <= 0) {
@@ -584,7 +587,6 @@ app.post("/add-medication", async (req, res) => {
           valueInputOption: "RAW",
           resource: { values: [[newQty]] },
         });
-        // <-- Log as "ADD"
         await logActivity({ action: "ADD", name, dose, location, quantity });
         found = true;
         break;
@@ -601,12 +603,12 @@ app.post("/add-medication", async (req, res) => {
       valueInputOption: "RAW",
       resource: { values: [[name, dose, location, quantity]] },
     });
-    // <-- Log as "ADD"
     await logActivity({ action: "ADD", name, dose, location, quantity });
   }
   res.redirect("/");
 });
 
+// Suggestions for Medication Name (datalist)
 app.get("/all-med-names", async (req, res) => {
   const sheetNames = ["File Meds", "Closet Meds"];
   const namesSet = new Set();
@@ -619,6 +621,25 @@ app.get("/all-med-names", async (req, res) => {
     }
   }
   res.json(Array.from(namesSet));
+});
+
+// Suggestions for Dose, context-sensitive to med name
+app.get("/doses-for-name", async (req, res) => {
+  const { name } = req.query;
+  if (!name) return res.json([]);
+  const sheetNames = ["File Meds", "Closet Meds"];
+  const dosesSet = new Set();
+  for (const sheetName of sheetNames) {
+    const data = await getSheetData(sheetName);
+    if (data.length > 1) {
+      data.slice(1).forEach(row => {
+        if ((row[0] || "").trim().toLowerCase() === name.trim().toLowerCase() && row[1]) {
+          dosesSet.add(row[1]);
+        }
+      });
+    }
+  }
+  res.json(Array.from(dosesSet));
 });
 
 app.listen(port, () => {
