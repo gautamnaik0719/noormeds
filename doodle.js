@@ -42,7 +42,8 @@ async function getSheetIdByName(sheetName) {
     });
     const sheet = response.data.sheets.find(
       (s) =>
-        s.properties.title.trim().toLowerCase() === sheetName.trim().toLowerCase(),
+        s.properties.title.trim().toLowerCase() ===
+        sheetName.trim().toLowerCase(),
     );
     if (!sheet) {
       console.error(`Sheet "${sheetName}" not found.`);
@@ -58,9 +59,12 @@ async function getSheetIdByName(sheetName) {
 // Log Activity function (unchanged)
 async function logActivity({ action, name, dose, location, quantity }) {
   const date = new Date();
-  const formatted = date.toLocaleString("en-US", { timeZone: "America/Los_Angeles" });
+  const formatted = date.toLocaleString("en-US", {
+    timeZone: "America/Los_Angeles",
+  });
   const sheetId = await getSheetIdByName("Activity Records");
-  if (sheetId == null) throw new Error('Could not find "Activity Records" sheet');
+  if (sheetId == null)
+    throw new Error('Could not find "Activity Records" sheet');
 
   await sheets.spreadsheets.batchUpdate({
     spreadsheetId,
@@ -207,8 +211,11 @@ async function getPastMedicationFiltered(searchName) {
   try {
     const data = await getSheetData("Past Medication", "A:C"); // Name, Dose, Location
     if (data.length < 2) return [];
-    const filtered = data.slice(1)
-      .filter(row => (row[0] || "").toLowerCase().includes(searchName.toLowerCase()))
+    const filtered = data
+      .slice(1)
+      .filter((row) =>
+        (row[0] || "").toLowerCase().includes(searchName.toLowerCase()),
+      )
       .map((row, idx) => ({
         rowIndex: idx + 2, // for deletion if gained quantity
         name: row[0] || "",
@@ -235,7 +242,7 @@ function renderInventoryPage({
     return locationOptions
       .split("</option>")
       .filter(Boolean)
-      .map(optionHtml => {
+      .map((optionHtml) => {
         // Parse value attribute in option
         const valueMatch = optionHtml.match(/value="([^"]*)"/);
         if (!valueMatch) return optionHtml + "</option>";
@@ -243,13 +250,11 @@ function renderInventoryPage({
         if (val === selectedLocation) {
           // Add selected attribute if matches
           if (optionHtml.includes(" selected")) return optionHtml + "</option>";
-          return optionHtml.replace(
-            />/,
-            ' selected="selected">'
-          ) + "</option>";
+          return optionHtml.replace(/>/, ' selected="selected">') + "</option>";
         }
         return optionHtml + "</option>";
-      }).join("");
+      })
+      .join("");
   }
 
   return `
@@ -262,7 +267,8 @@ function renderInventoryPage({
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&display=swap" rel="stylesheet" />
 <style>
   :root {
-    --primary: #F37021;
+    --primary: #F37021; /* Orange for general */
+    --add-primary: #28a745; /* Green for Add Search */
     --light: #FFF9F5;
     --dark: #333;
     --border: #E8E8E8;
@@ -334,6 +340,19 @@ function renderInventoryPage({
   button:hover {
     background: #E05A1A;
   }
+  /* New button style for Add CURRENT Medication section */
+  form.add-current-med .add-search-btn {
+    background: var(--add-primary);
+  }
+  form.add-current-med .add-search-btn:hover {
+    background: #218838;
+  }
+  form.add-current-med label {
+    color: var(--add-primary);
+    font-weight: 700;
+    font-size: 1.1rem;
+    margin-bottom: 0.7rem;
+  }
   table {
     width: 100%;
     border-collapse: collapse;
@@ -383,11 +402,19 @@ function renderInventoryPage({
   }
   .add-section-title {
     text-align: center;
-    color: var(--primary);
     font-size: 1.3rem;
     font-weight: 600;
     margin-bottom: 1rem;
     margin-top: 0.5rem;
+  }
+  /* Subsection titles */
+  .subsection-title {
+    font-weight: 700;
+    font-size: 1.2rem;
+    margin-bottom: 1rem;
+    color: var(--add-primary);
+    border-bottom: 2px solid var(--add-primary);
+    padding-bottom: 0.25rem;
   }
   @media (max-width: 768px) {
     header {
@@ -417,6 +444,7 @@ function renderInventoryPage({
     <img src="/noor-logo.jpg" alt="SLO Noor Foundation Logo" class="logo" />
     <h1>Check out our Medication Inventory!</h1>
   </header>
+
   <div class="container">
     <!-- Top search (remove meds) - excludes Past Medication -->
     <form action="/search" method="GET">
@@ -424,46 +452,34 @@ function renderInventoryPage({
       <input type="text" name="name" required value="${name}" />
       <button type="submit">Search</button>
     </form>
+
     ${resultsSection}
 
     <div style="margin-top: 23rem;">
       <div class="divider"></div>
+
       <div class="add-section-title">Add Medication to Our Inventory!</div>
 
-      <!-- Add Medication Search, includes Past Medication with location dropdown -->
-      <form action="/quick-add" method="GET">
+      <!-- Add CURRENT Medication subsection title -->
+      <div class="subsection-title">Add CURRENT Medication</div>
+
+      <!-- Add Medication Search (Add CURRENT Medication) - styled green -->
+      <form action="/quick-add" method="GET" class="add-current-med">
         <label>Search Medication Name</label>
         <input type="text" name="name" id="quickAddNameInput" list="quickAddNamesList" required autocomplete="off" />
         <datalist id="quickAddNamesList"></datalist>
-        <button type="submit">Search</button>
+        <button type="submit" class="add-search-btn">Search</button>
       </form>
 
-      <div id="quickAddResults">
-      ${
-        quickAddResultsSection
-          ? quickAddResultsSection
-              // Rewrite quickAddResultsSection here to include location dropdown for Past Medication entries:
-              .replace(
-                /<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>/g,
-                (match, name, dose, location, quantity, offset, string) => {
-                  // If quantity === "0", treat as Past Medication and render location as dropdown
-                  if (quantity === "0") {
-                    const locationOptionsHtml = renderLocationOptions(location);
-                    return `<td>${name}</td><td>${dose}</td><td>
-                    <select name="items[LOCATION_DROPDOWN_${offset}][location]" class="past-location-select">
-                      ${locationOptionsHtml}
-                    </select>
-                    </td><td>${quantity}</td>`;
-                  }
-                  return match;
-                }
-              )
-          : ``
-      }
+      <div id="quickAddResults">${quickAddResultsSection}</div>
+
+      <!-- Add NEW Medication subsection title -->
+      <div class="subsection-title" style="color: var(--primary); border-bottom-color: var(--primary); margin-top: 2rem;">
+        Add NEW Medication
       </div>
 
-      <!-- Add Medication form -->
-      <form action="/add-medication" method="POST">
+      <!-- Add NEW Medication form (uses standard orange theme) -->
+      <form action="/add-medication" method="POST" class="add-new-med">
         <label>Medication Name</label>
         <input type="text" name="name" id="medNameInput" list="medNamesList" required autocomplete="off" />
         <datalist id="medNamesList"></datalist>
@@ -484,62 +500,64 @@ function renderInventoryPage({
       </form>
     </div>
   </div>
+
   <footer>
     <p>© 2025 SLO Noor Foundation. All rights reserved.</p>
   </footer>
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-  // Populate medication names for main add and quick add search bars
-  fetch("/all-med-names")
-    .then(res => res.json())
-    .then(names => {
-      const datalist = document.getElementById("medNamesList");
-      datalist.innerHTML = "";
-      names.forEach(name => {
-        const option = document.createElement("option");
-        option.value = name;
-        datalist.appendChild(option);
-      });
-      const quickAddList = document.getElementById("quickAddNamesList");
-      if (quickAddList) {
-        quickAddList.innerHTML = "";
-        names.forEach(name => {
-          const option = document.createElement("option");
-          option.value = name;
-          quickAddList.appendChild(option);
+
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      // Populate names for both med name inputs
+      fetch("/all-med-names")
+        .then(res => res.json())
+        .then(names => {
+          let datalist = document.getElementById("medNamesList");
+          datalist.innerHTML = "";
+          names.forEach(name => {
+            const opt = document.createElement("option");
+            opt.value = name;
+            datalist.appendChild(opt);
+          });
+          let quickAddList = document.getElementById("quickAddNamesList");
+          if (quickAddList) {
+            quickAddList.innerHTML = "";
+            names.forEach(name => {
+              const opt = document.createElement("option");
+              opt.value = name;
+              quickAddList.appendChild(opt);
+            });
+          }
         });
+
+      // Dose suggestions for Add NEW Medication form only
+      const medNameInput = document.getElementById("medNameInput");
+      const doseList = document.getElementById("doseList");
+      function fetchDoseSuggestions() {
+        const medName = medNameInput.value.trim();
+        doseList.innerHTML = "";
+        if (medName !== "") {
+          fetch("/doses-for-name?name=" + encodeURIComponent(medName))
+            .then(res => res.json())
+            .then(doses => {
+              doseList.innerHTML = "";
+              doses.forEach(dose => {
+                const opt = document.createElement("option");
+                opt.value = dose;
+                doseList.appendChild(opt);
+              });
+            });
+        }
+      }
+      medNameInput.addEventListener("input", fetchDoseSuggestions);
+      medNameInput.addEventListener("change", fetchDoseSuggestions);
+
+      // Scroll to quickAdd results if visible
+      const quickAddResults = document.getElementById("quickAddResults");
+      if (quickAddResults && quickAddResults.innerHTML.trim() !== "") {
+        quickAddResults.scrollIntoView({ behavior: "smooth" });
       }
     });
-
-  // Dose suggestions for add-med form
-  const medNameInput = document.getElementById("medNameInput");
-  const doseList = document.getElementById("doseList");
-  function fetchDoseSuggestions() {
-    const medName = medNameInput.value.trim();
-    doseList.innerHTML = "";
-    if (medName !== "") {
-      fetch("/doses-for-name?name=" + encodeURIComponent(medName))
-        .then(res => res.json())
-        .then(doses => {
-          doseList.innerHTML = "";
-          doses.forEach(dose => {
-            const option = document.createElement("option");
-            option.value = dose;
-            doseList.appendChild(option);
-          });
-        });
-    }
-  }
-  medNameInput.addEventListener("input", fetchDoseSuggestions);
-  medNameInput.addEventListener("change", fetchDoseSuggestions);
-
-  // Scroll to quickAdd results if visible
-  const quickAddResults = document.getElementById("quickAddResults");
-  if (quickAddResults && quickAddResults.innerHTML.trim() !== "") {
-    quickAddResults.scrollIntoView({ behavior: "smooth" });
-  }
-});
-</script>
+  </script>
 </body>
 </html>
   `;
@@ -566,7 +584,7 @@ function renderLocationOptions(selectedLocation) {
   return exampleLocations
     .map(
       (loc) =>
-        `<option value="${loc}"${loc === selectedLocation ? ' selected="selected"' : ""}>${loc}</option>`
+        `<option value="${loc}"${loc === selectedLocation ? ' selected="selected"' : ""}>${loc}</option>`,
     )
     .join("");
 }
@@ -578,16 +596,19 @@ app.get("/", async (req, res) => {
   for (const sheetName of sheetNames) {
     const data = await getSheetData(sheetName);
     if (data.length > 0) {
-      data.slice(1).forEach(row => {
+      data.slice(1).forEach((row) => {
         if (row[2]) allLocations.add(row[2]);
       });
     }
   }
   let locationOptions = Array.from(allLocations)
-    .map(loc => `<option value="${loc}">${loc}</option>`)
+    .map((loc) => `<option value="${loc}">${loc}</option>`)
     .join("");
-  if (!locationOptions) locationOptions = `<option value="">No locations available</option>`;
-  res.send(renderInventoryPage({ resultsSection: "", name: "", locationOptions }));
+  if (!locationOptions)
+    locationOptions = `<option value="">No locations available</option>`;
+  res.send(
+    renderInventoryPage({ resultsSection: "", name: "", locationOptions }),
+  );
 });
 
 // Search route — excludes Past Medication
@@ -600,15 +621,16 @@ app.get("/search", async (req, res) => {
   for (const sheetName of sheetNames) {
     const data = await getSheetData(sheetName);
     if (data.length > 0) {
-      data.slice(1).forEach(row => {
+      data.slice(1).forEach((row) => {
         if (row[2]) allLocations.add(row[2]);
       });
     }
   }
   let locationOptions = Array.from(allLocations)
-    .map(loc => `<option value="${loc}">${loc}</option>`)
+    .map((loc) => `<option value="${loc}">${loc}</option>`)
     .join("");
-  if (!locationOptions) locationOptions = `<option value="">No locations available</option>`;
+  if (!locationOptions)
+    locationOptions = `<option value="">No locations available</option>`;
 
   const data = await getFilteredData(name);
   let resultsSection = "";
@@ -640,7 +662,7 @@ app.get("/search", async (req, res) => {
                   <input type="hidden" name="items[${i}][location]" value="${item.location}" />
                 </div>
               </td>
-            </tr>`
+            </tr>`,
             )
             .join("")}
         </table>
@@ -680,15 +702,16 @@ app.get("/quick-add", async (req, res) => {
   for (const sheetName of sheetNames) {
     const data = await getSheetData(sheetName);
     if (data.length > 0) {
-      data.slice(1).forEach(row => {
+      data.slice(1).forEach((row) => {
         if (row[2]) allLocations.add(row[2]);
       });
     }
   }
   let locationOptions = Array.from(allLocations)
-    .map(loc => `<option value="${loc}">${loc}</option>`)
+    .map((loc) => `<option value="${loc}">${loc}</option>`)
     .join("");
-  if (!locationOptions) locationOptions = `<option value="">No locations available</option>`;
+  if (!locationOptions)
+    locationOptions = `<option value="">No locations available</option>`;
 
   const currentData = await getFilteredData(name);
   const pastData = await getPastMedicationFiltered(name);
@@ -704,7 +727,8 @@ app.get("/quick-add", async (req, res) => {
           <th>Name</th><th>Dose</th><th>Location</th><th>Quantity</th><th>Amount to Add</th>
         </tr>
         ${currentData
-          .map((item, i) => `
+          .map(
+            (item, i) => `
             <tr>
               <td>${item.name}</td>
               <td>${item.dose}</td>
@@ -726,7 +750,8 @@ app.get("/quick-add", async (req, res) => {
                 </div>
               </td>
             </tr>
-          `)
+          `,
+          )
           .join("")}
 
         ${pastData
@@ -735,17 +760,16 @@ app.get("/quick-add", async (req, res) => {
             // Location dropdown HTML
             const locOptions = locationOptions
               .split("</option>")
-              .filter(o => o.trim())
-              .map(o => {
+              .filter((o) => o.trim())
+              .map((o) => {
                 const valMatch = o.match(/value="([^"]*)"/);
                 const val = valMatch ? valMatch[1] : "";
                 // Mark selected if matches item's location
-                if (val === item.location) return o.replace(
-                  />/,
-                  ' selected="selected">'
-                ) + "</option>";
+                if (val === item.location)
+                  return o.replace(/>/, ' selected="selected">') + "</option>";
                 else return o + "</option>";
-              }).join("");
+              })
+              .join("");
             return `
             <tr>
               <td>${item.name}</td>
@@ -799,7 +823,14 @@ app.get("/quick-add", async (req, res) => {
     quickAddResultsSection = `<div class="no-results"><p>No results found for "${name}".</p></div>`;
   }
 
-  res.send(renderInventoryPage({ resultsSection: "", name: "", locationOptions, quickAddResultsSection }));
+  res.send(
+    renderInventoryPage({
+      resultsSection: "",
+      name: "",
+      locationOptions,
+      quickAddResultsSection,
+    }),
+  );
 });
 
 // Quick Add POST handler (updated to handle Past Medication removal if qty added)
@@ -817,7 +848,11 @@ app.post("/quick-add-update", async (req, res) => {
 
     if (item.sheetName === "Past Medication") {
       // Remove from Past Medication before adding to File Meds
-      await removeFromPastMedication({ name: item.name, dose: item.dose, location });
+      await removeFromPastMedication({
+        name: item.name,
+        dose: item.dose,
+        location,
+      });
       // Append to File Meds with addQty as quantity and location selected from dropdown
       try {
         await sheets.spreadsheets.values.append({
@@ -868,7 +903,8 @@ app.post("/quick-add-update", async (req, res) => {
 // Remove/Use Medications - unchanged
 app.post("/update", async (req, res) => {
   const { items } = req.body;
-  if (!items || !Array.isArray(items)) return res.status(400).send("No items to update");
+  if (!items || !Array.isArray(items))
+    return res.status(400).send("No items to update");
   for (const item of items) {
     if (!item.sheetName || !item.rowIndex || item.qty === undefined) continue;
     const qtyToTake = parseInt(item.qty) || 0;
@@ -911,7 +947,10 @@ app.post("/update", async (req, res) => {
           },
         });
       } catch (error) {
-        console.error("Error deleting row and moving to Past Medication:", error);
+        console.error(
+          "Error deleting row and moving to Past Medication:",
+          error,
+        );
       }
     } else {
       try {
@@ -937,12 +976,14 @@ app.post("/add-medication", async (req, res) => {
   for (const sheetName of sheetNames) {
     const data = await getSheetData(sheetName);
     if (data.length > 0) {
-      const rowIndex = data.slice(1).findIndex(
-        (row) =>
-          (row[0] || "").toLowerCase() === (name || "").toLowerCase() &&
-          normalizeDose(row[1]) === normalizeDose(dose) &&
-          (row[2] || "").toLowerCase() === (location || "").toLowerCase(),
-      );
+      const rowIndex = data
+        .slice(1)
+        .findIndex(
+          (row) =>
+            (row[0] || "").toLowerCase() === (name || "").toLowerCase() &&
+            normalizeDose(row[1]) === normalizeDose(dose) &&
+            (row[2] || "").toLowerCase() === (location || "").toLowerCase(),
+        );
       if (rowIndex !== -1) {
         const actualRowIndex = rowIndex + 2;
         const currentQty = parseInt(data[rowIndex + 1][3]) || 0;
@@ -981,7 +1022,7 @@ app.get("/all-med-names", async (req, res) => {
   for (const sheetName of sheetNames) {
     const data = await getSheetData(sheetName);
     if (data.length > 0) {
-      data.slice(1).forEach(row => {
+      data.slice(1).forEach((row) => {
         if (row[0]) namesSet.add(row[0]);
       });
     }
@@ -998,8 +1039,11 @@ app.get("/doses-for-name", async (req, res) => {
   for (const sheetName of sheetNames) {
     const data = await getSheetData(sheetName);
     if (data.length > 1) {
-      data.slice(1).forEach(row => {
-        if ((row[0] || "").trim().toLowerCase() === name.trim().toLowerCase() && row[1]) {
+      data.slice(1).forEach((row) => {
+        if (
+          (row[0] || "").trim().toLowerCase() === name.trim().toLowerCase() &&
+          row[1]
+        ) {
           dosesSet.add(row[1]);
         }
       });
