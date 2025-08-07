@@ -5,7 +5,6 @@ import cors from "cors";
 const app = express();
 const port = 3000;
 
-// Utility: Normalize dose string by removing all spaces and lowercasing
 function normalizeDose(dose) {
   return (dose || "").replace(/\s+/g, "").toLowerCase();
 }
@@ -19,7 +18,6 @@ app.use(express.static(".")); // Serve static files (e.g., logo) from 'public' f
 // Google Sheets setup
 const creds = JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS);
 const spreadsheetId = process.env.GOOGLE_SHEET_ID;
-
 let auth;
 try {
   auth = new google.auth.JWT({
@@ -33,26 +31,22 @@ try {
   console.error("Google Sheets authentication failed:", error);
   throw new Error("Authentication setup failed");
 }
-
 const sheets = google.sheets({ version: "v4", auth });
 
-// Utility: Get sheet ID by name (robust to invisible/trailing spaces and case)
 async function getSheetIdByName(sheetName) {
   try {
     const response = await sheets.spreadsheets.get({
       spreadsheetId,
       fields: "sheets.properties",
     });
-    // Compare using trim() and toLowerCase() to avoid invisible/trailing space issues
+
     const sheet = response.data.sheets.find(
       (s) =>
         s.properties.title.trim().toLowerCase() ===
         sheetName.trim().toLowerCase(),
     );
     if (!sheet) {
-      console.error(
-        `Sheet with name "${sheetName}" not found. Double-check for extra spaces or invisible characters.`,
-      );
+      console.error(`Sheet "${sheetName}" not found.`);
       return null;
     }
     return sheet.properties.sheetId;
@@ -62,36 +56,30 @@ async function getSheetIdByName(sheetName) {
   }
 }
 
-//Utility: Log Data in Activity Records
 async function logActivity({ action, name, dose, location, quantity }) {
   const date = new Date();
   const formatted = date.toLocaleString("en-US", {
     timeZone: "America/Los_Angeles",
   });
   const sheetId = await getSheetIdByName("Activity Records");
-  if (sheetId === undefined || sheetId === null) {
+  if (sheetId == null) {
     throw new Error('Could not find "Activity Records" sheet');
   }
-  // Insert a blank row after the header (Row index 1, 2nd row)
+
   await sheets.spreadsheets.batchUpdate({
     spreadsheetId,
     resource: {
       requests: [
         {
           insertDimension: {
-            range: {
-              sheetId,
-              dimension: "ROWS",
-              startIndex: 1,
-              endIndex: 2,
-            },
+            range: { sheetId, dimension: "ROWS", startIndex: 1, endIndex: 2 },
             inheritFromBefore: false,
           },
         },
       ],
     },
   });
-  // Write the log data into the now-empty A2 row
+
   await sheets.spreadsheets.values.update({
     spreadsheetId,
     range: "Activity Records!A2:F2",
@@ -102,7 +90,6 @@ async function logActivity({ action, name, dose, location, quantity }) {
   });
 }
 
-// Utility: Fetch sheet data (defaults to columns A:D)
 async function getSheetData(sheetName, range = "A:D") {
   try {
     const response = await sheets.spreadsheets.values.get({
@@ -116,7 +103,6 @@ async function getSheetData(sheetName, range = "A:D") {
   }
 }
 
-// Utility: Filter data by medication name (case-insensitive)
 async function getFilteredData(searchName) {
   const sheetNames = ["File Meds", "Closet Meds"];
   const allData = [];
@@ -143,8 +129,13 @@ async function getFilteredData(searchName) {
   );
 }
 
-// Renders the inventory page with optional search results
-function renderInventoryPage({ resultsSection, name, locationOptions }) {
+// Renders the inventory page with all sections
+function renderInventoryPage({
+  resultsSection,
+  name,
+  locationOptions,
+  quickAddResultsSection = "",
+}) {
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -271,7 +262,7 @@ function renderInventoryPage({ resultsSection, name, locationOptions }) {
     }
     .divider {
       border-top: 4px solid var(--primary);
-      margin: 30rem 0 2rem 0;
+      margin: 2rem 0 2rem 0;
     }
     .add-section-title {
       text-align: center;
@@ -307,14 +298,25 @@ function renderInventoryPage({ resultsSection, name, locationOptions }) {
     <h1>Check out our Medication Inventory!</h1>
   </header>
   <div class="container">
+
     <form action="/search" method="GET">
       <label>Search Medication Name</label>
       <input type="text" name="name" required value="${name}">
       <button type="submit">Search</button>
     </form>
     ${resultsSection}
+
+    <div style="margin-top: 23rem;">
     <div class="divider"></div>
-    <div class="add-section-title">Add Medication to Our Inventory!</div>
+<div class="add-section-title">Add Medication to Our Inventory!</div>
+
+<form action="/quick-add" method="GET">
+  <label>Search Medication Name</label>
+  <input type="text" name="name" id="quickAddNameInput" list="quickAddNamesList" required autocomplete="off">
+  <datalist id="quickAddNamesList"></datalist>
+  <button type="submit">Search</button>
+</form>
+${quickAddResultsSection || ""}
     <form action="/add-medication" method="POST">
       <label>Medication Name</label>
       <input type="text" name="name" id="medNameInput" list="medNamesList" required autocomplete="off">
@@ -339,6 +341,7 @@ function renderInventoryPage({ resultsSection, name, locationOptions }) {
   </footer>
   <script>
   document.addEventListener("DOMContentLoaded", function() {
+    // Main med names
     fetch("/all-med-names")
       .then(res => res.json())
       .then(names => {
@@ -349,9 +352,19 @@ function renderInventoryPage({ resultsSection, name, locationOptions }) {
           option.value = name;
           datalist.appendChild(option);
         });
+        // -- quick add bar --
+        const quickAddList = document.getElementById("quickAddNamesList");
+        if (quickAddList) {
+          quickAddList.innerHTML = "";
+          names.forEach(name => {
+            const option = document.createElement("option");
+            option.value = name;
+            quickAddList.appendChild(option);
+          });
+        }
       });
 
-    // Dose suggestions
+    // Dose suggestions for add-med
     const medNameInput = document.getElementById("medNameInput");
     const doseList = document.getElementById("doseList");
     function fetchDoseSuggestions() {
@@ -397,8 +410,6 @@ app.get("/", async (req, res) => {
   if (!locationOptions) {
     locationOptions = `<option value="">No locations available</option>`;
   }
-
-  // No resultsSection by default
   res.send(
     renderInventoryPage({ resultsSection: "", name: "", locationOptions }),
   );
@@ -423,7 +434,6 @@ app.get("/search", async (req, res) => {
   if (!locationOptions) {
     locationOptions = `<option value="">No locations available</option>`;
   }
-
   const data = await getFilteredData(name);
   let resultsSection = "";
   if (data.length > 0) {
@@ -454,7 +464,7 @@ app.get("/search", async (req, res) => {
                 </div>
               </td>
             </tr>
-          `
+          `,
             )
             .join("")}
         </table>
@@ -485,26 +495,137 @@ app.get("/search", async (req, res) => {
   res.send(renderInventoryPage({ resultsSection, name, locationOptions }));
 });
 
-// Update medication quantities and delete row if quantity reaches zero
+// Quick Add (search existing to add quantity)
+app.get("/quick-add", async (req, res) => {
+  const { name } = req.query;
+  const sheetNames = ["File Meds", "Closet Meds"];
+  const allLocations = new Set();
+  for (const sheetName of sheetNames) {
+    const data = await getSheetData(sheetName);
+    if (data.length > 0) {
+      data.slice(1).forEach((row) => {
+        if (row[2]) allLocations.add(row[2]);
+      });
+    }
+  }
+  let locationOptions = Array.from(allLocations)
+    .map((loc) => `<option value="${loc}">${loc}</option>`)
+    .join("");
+  if (!locationOptions) {
+    locationOptions = `<option value="">No locations available</option>`;
+  }
+  const data = await getFilteredData(name);
+  let quickAddResultsSection = "";
+  if (data.length > 0) {
+    quickAddResultsSection = `
+      <form id="quickAddForm" action="/quick-add-update" method="POST">
+        <table>
+          <tr><th>Name</th><th>Dose</th><th>Location</th><th>Quantity</th><th>Amount to Add</th></tr>
+          ${data
+            .map(
+              (item, i) => `
+            <tr>
+              <td>${item.name}</td>
+              <td>${item.dose}</td>
+              <td>${item.location}</td>
+              <td>${item.quantity}</td>
+              <td>
+                <div class="qty-controls">
+                  <button type="button" onclick="quickDecQty(${i})">-</button>
+                  <input type="number" min="0" value="0" id="addQty${i}" class="qty-btn" onchange="quickUpdateQty(${i})">
+                  <button type="button" onclick="quickIncQty(${i})">+</button>
+                  <input type="hidden" name="items[${i}][sheetName]" value="${item.sheetName}">
+                  <input type="hidden" name="items[${i}][rowIndex]" value="${item.rowIndex}">
+                  <input type="hidden" name="items[${i}][name]" value="${item.name}">
+                  <input type="hidden" name="items[${i}][dose]" value="${item.dose}">
+                  <input type="hidden" name="items[${i}][location]" value="${item.location}">
+                  <input type="hidden" name="items[${i}][quantity]" value="${item.quantity}">
+                  <input type="hidden" name="items[${i}][addQty]" id="addQtyHidden${i}" value="0">
+                </div>
+              </td>
+            </tr>
+          `,
+            )
+            .join("")}
+        </table>
+        <button type="submit">Add Quantity</button>
+      </form>
+      <script>
+        function quickUpdateQty(index) {
+          let el = document.getElementById('addQty' + index);
+          let hidden = document.getElementById('addQtyHidden' + index);
+          hidden.value = el.value;
+        }
+        function quickDecQty(index) {
+          let el = document.getElementById('addQty' + index);
+          if (el.value > 0) el.value--;
+          quickUpdateQty(index);
+        }
+        function quickIncQty(index) {
+          let el = document.getElementById('addQty' + index);
+          el.value++;
+          quickUpdateQty(index);
+        }
+      </script>
+    `;
+  } else if (name) {
+    quickAddResultsSection = `<div class="no-results"><p>No results found for "${name}".</p></div>`;
+  }
+  res.send(
+    renderInventoryPage({
+      resultsSection: "",
+      name: "",
+      locationOptions,
+      quickAddResultsSection,
+    }),
+  );
+});
+
+// Quick Add POST handler
+app.post("/quick-add-update", async (req, res) => {
+  const { items } = req.body;
+  if (!items || !Array.isArray(items)) return res.redirect("/");
+  for (const item of items) {
+    if (!item.sheetName || !item.rowIndex || !item.addQty) continue;
+    const addQty = parseInt(item.addQty) || 0;
+    if (!addQty) continue;
+    const currentQty = parseInt(item.quantity) || 0;
+    const newQty = currentQty + addQty;
+    try {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `${item.sheetName}!D${item.rowIndex}`,
+        valueInputOption: "RAW",
+        resource: { values: [[newQty]] },
+      });
+      await logActivity({
+        action: "ADD",
+        name: item.name,
+        dose: item.dose || "",
+        location: item.location || "",
+        quantity: addQty,
+      });
+    } catch (err) {
+      console.error("Quick Add error:", err);
+    }
+  }
+  res.redirect("/");
+});
+
+// Remove/Use Medications
 app.post("/update", async (req, res) => {
   const { items } = req.body;
   if (!items || !Array.isArray(items)) {
-    console.log("No items or invalid items array in request");
     return res.status(400).send("No items to update");
   }
   for (const item of items) {
     if (!item.sheetName || !item.rowIndex || item.qty === undefined) {
-      console.log("Missing required item fields:", item);
       continue;
     }
-
     const qtyToTake = parseInt(item.qty) || 0;
-    if (!qtyToTake) continue; // Don’t log or update if zero
-
+    if (!qtyToTake) continue;
     const currentQty = parseInt(item.quantity) || 0;
     const newQty = Math.max(0, currentQty - qtyToTake);
-
-    // Log the REMOVAL to Activity Records
     await logActivity({
       action: "REMOVE",
       name: item.name,
@@ -512,12 +633,10 @@ app.post("/update", async (req, res) => {
       location: item.location || "",
       quantity: qtyToTake,
     });
-
     if (newQty <= 0) {
       try {
         const sheetId = await getSheetIdByName(item.sheetName);
         if (sheetId === undefined || sheetId === null) {
-          console.log(`Sheet ID not found for: ${item.sheetName}`);
           continue;
         }
         await sheets.spreadsheets.batchUpdate({
@@ -529,7 +648,7 @@ app.post("/update", async (req, res) => {
                   range: {
                     sheetId,
                     dimension: "ROWS",
-                    startIndex: item.rowIndex - 1, // header is row 1
+                    startIndex: item.rowIndex - 1,
                     endIndex: item.rowIndex,
                   },
                 },
@@ -553,7 +672,6 @@ app.post("/update", async (req, res) => {
       }
     }
   }
-
   res.redirect("/");
 });
 
@@ -573,14 +691,10 @@ app.post("/add-medication", async (req, res) => {
             normalizeDose(row[1]) === normalizeDose(dose) &&
             (row[2] || "").toLowerCase() === (location || "").toLowerCase(),
         );
-
       if (rowIndex !== -1) {
         const actualRowIndex = rowIndex + 2;
         const currentQty = parseInt(data[rowIndex + 1][3]) || 0;
         const newQty = currentQty + parseInt(quantity);
-        console.log(
-          `Adding to existing: ${name} ${dose} at ${location} in ${sheetName}. Old qty: ${currentQty}, add: ${quantity}, new qty: ${newQty}`,
-        );
         await sheets.spreadsheets.values.update({
           spreadsheetId,
           range: `${sheetName}!D${actualRowIndex}`,
@@ -594,9 +708,6 @@ app.post("/add-medication", async (req, res) => {
     }
   }
   if (!found) {
-    console.log(
-      `Adding NEW: ${name} ${dose} at ${location} qty ${quantity} to File Meds`,
-    );
     await sheets.spreadsheets.values.append({
       spreadsheetId,
       range: "File Meds!A:D",
@@ -608,7 +719,6 @@ app.post("/add-medication", async (req, res) => {
   res.redirect("/");
 });
 
-// Suggestions for Medication Name (datalist)
 app.get("/all-med-names", async (req, res) => {
   const sheetNames = ["File Meds", "Closet Meds"];
   const namesSet = new Set();
@@ -623,7 +733,7 @@ app.get("/all-med-names", async (req, res) => {
   res.json(Array.from(namesSet));
 });
 
-// Suggestions for Dose, context-sensitive to med name
+// Suggestions for Dose (contextual, for add-med form)
 app.get("/doses-for-name", async (req, res) => {
   const { name } = req.query;
   if (!name) return res.json([]);
@@ -632,8 +742,11 @@ app.get("/doses-for-name", async (req, res) => {
   for (const sheetName of sheetNames) {
     const data = await getSheetData(sheetName);
     if (data.length > 1) {
-      data.slice(1).forEach(row => {
-        if ((row[0] || "").trim().toLowerCase() === name.trim().toLowerCase() && row[1]) {
+      data.slice(1).forEach((row) => {
+        if (
+          (row[0] || "").trim().toLowerCase() === name.trim().toLowerCase() &&
+          row[1]
+        ) {
           dosesSet.add(row[1]);
         }
       });
