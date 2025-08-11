@@ -179,6 +179,21 @@ async function getSheetData(sheetName, range = "A:D") {
   }
 }
 
+// NEW: Fetch ordered location list from Location Catalog sheet (column A)
+async function getLocationCatalogOrder() {
+  try {
+    const data = await getSheetData("Location Catalog", "A:A");
+    // Skip header, filter blanks
+    return data
+      .slice(1)
+      .map((r) => r[0])
+      .filter(Boolean);
+  } catch (err) {
+    console.error("Error fetching Location Catalog:", err);
+    return [];
+  }
+}
+
 // Utility: Combine meds from File Meds and Closet Meds for search/filter
 async function getFilteredData(searchName) {
   const sheetNames = ["File Meds", "Closet Meds"];
@@ -557,17 +572,8 @@ function renderLocationOptions(selectedLocation) {
 
 // Homepage route
 app.get("/", async (req, res) => {
-  const sheetNames = ["File Meds", "Closet Meds"];
-  const allLocations = new Set();
-  for (const sheetName of sheetNames) {
-    const data = await getSheetData(sheetName);
-    if (data.length > 0) {
-      data.slice(1).forEach((row) => {
-        if (row[2]) allLocations.add(row[2]);
-      });
-    }
-  }
-  let locationOptions = Array.from(allLocations)
+  const orderedLocations = await getLocationCatalogOrder();
+  let locationOptions = orderedLocations
     .map((loc) => `<option value="${loc}">${loc}</option>`)
     .join("");
   if (!locationOptions)
@@ -582,17 +588,8 @@ app.get("/search", async (req, res) => {
   const { name } = req.query;
   if (!name) return res.redirect("/");
 
-  const sheetNames = ["File Meds", "Closet Meds"];
-  const allLocations = new Set();
-  for (const sheetName of sheetNames) {
-    const data = await getSheetData(sheetName);
-    if (data.length > 0) {
-      data.slice(1).forEach((row) => {
-        if (row[2]) allLocations.add(row[2]);
-      });
-    }
-  }
-  let locationOptions = Array.from(allLocations)
+  const orderedLocations = await getLocationCatalogOrder();
+  let locationOptions = orderedLocations
     .map((loc) => `<option value="${loc}">${loc}</option>`)
     .join("");
   if (!locationOptions)
@@ -663,17 +660,8 @@ app.get("/quick-add", async (req, res) => {
   const { name } = req.query;
   if (!name) return res.redirect("/");
 
-  const sheetNames = ["File Meds", "Closet Meds"];
-  const allLocations = new Set();
-  for (const sheetName of sheetNames) {
-    const data = await getSheetData(sheetName);
-    if (data.length > 0) {
-      data.slice(1).forEach((row) => {
-        if (row[2]) allLocations.add(row[2]);
-      });
-    }
-  }
-  let locationOptions = Array.from(allLocations)
+  const orderedLocations = await getLocationCatalogOrder();
+  let locationOptions = orderedLocations
     .map((loc) => `<option value="${loc}">${loc}</option>`)
     .join("");
   if (!locationOptions)
@@ -724,18 +712,13 @@ app.get("/quick-add", async (req, res) => {
           .map((item, idx) => {
             const index = currentData.length + idx; // continue index count
             // Location dropdown HTML
-            const locOptions = locationOptions
-              .split("</option>")
-              .filter((o) => o.trim())
-              .map((o) => {
-                const valMatch = o.match(/value="([^"]*)"/);
-                const val = valMatch ? valMatch[1] : "";
-                // Mark selected if matches item's location
-                if (val === item.location)
-                  return o.replace(/>/, ' selected="selected">') + "</option>";
-                else return o + "</option>";
-              })
+            const locOptions = orderedLocations
+              .map(
+                (loc) =>
+                  `<option value="${loc}"${loc === item.location ? " selected" : ""}>${loc}</option>`,
+              )
               .join("");
+
             return `
             <tr>
               <td>${item.name}</td>
