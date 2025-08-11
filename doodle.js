@@ -803,15 +803,21 @@ app.post("/quick-add-update", async (req, res) => {
         location,
       });
       // Append to File Meds with addQty as quantity and location selected from dropdown
+      // Decide target sheet based on location text
+      const targetSheet = location.toLowerCase().includes("closet")
+        ? "Closet Meds"
+        : "File Meds";
+
       try {
         await sheets.spreadsheets.values.append({
           spreadsheetId,
-          range: "File Meds!A:D",
+          range: `${targetSheet}!A:D`,
           valueInputOption: "RAW",
           resource: {
             values: [[item.name, item.dose, location, addQty]],
           },
         });
+
         await logActivity({
           action: "ADD",
           name: item.name,
@@ -953,9 +959,14 @@ app.post("/add-medication", async (req, res) => {
     // If adding new med, and it exists in Past Medication, remove it first (Location might differ)
     await removeFromPastMedication({ name, dose, location });
 
+    // Decide target sheet based on location text
+    const targetSheet = location.toLowerCase().includes("closet")
+      ? "Closet Meds"
+      : "File Meds";
+
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: "File Meds!A:D",
+      range: `${targetSheet}!A:D`,
       valueInputOption: "RAW",
       resource: { values: [[name, dose, location, quantity]] },
     });
