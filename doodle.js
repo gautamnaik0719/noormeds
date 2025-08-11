@@ -267,16 +267,15 @@ function renderInventoryPage({
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&display=swap" rel="stylesheet" />
 <style>
   :root {
-    --primary: #F37021; /* Orange for general */
-    --add-primary: #28a745; /* Green for Add Search */
+    --primary: #F37021; /* Orange */
+    --add-primary: #28a745; /* Green */
     --light: #FFF9F5;
     --dark: #333;
     --border: #E8E8E8;
   }
   body {
     font-family: 'Open Sans', sans-serif;
-    margin: 0;
-    padding: 0;
+    margin: 0; padding: 0;
     background: white;
     color: var(--dark);
   }
@@ -285,25 +284,14 @@ function renderInventoryPage({
     padding: 1rem 2rem;
     border-bottom: 1px solid var(--border);
     max-width: 1000px;
-    margin: 0 auto;
+    margin: auto;
     display: flex;
     align-items: center;
     gap: 1rem;
   }
-  .logo {
-    height: 60px;
-  }
-  h1 {
-    color: var(--dark);
-    font-weight: 600;
-    margin: 0;
-    font-size: 1.8rem;
-  }
-  .container {
-    max-width: 1000px;
-    margin: 0 auto;
-    padding: 1rem;
-  }
+  .logo { height: 60px; }
+  h1 { margin: 0; color: var(--dark); font-weight: 600; font-size: 1.8rem; }
+  .container { max-width: 1000px; margin: auto; padding: 1rem; }
   form {
     background: white;
     padding: 1.5rem;
@@ -312,34 +300,59 @@ function renderInventoryPage({
     margin-bottom: 2rem;
     border: 1px solid var(--border);
   }
-  label {
-    display: block;
-    margin-bottom: 0.5rem;
-    font-weight: 600;
-  }
+  label { display: block; margin-bottom: 0.5rem; font-weight: 600; }
   input[type="text"], input[type="number"], select {
-    width: 100%;
-    padding: 0.5rem;
-    margin-bottom: 1rem;
-    border: 1px solid var(--border);
-    border-radius: 4px;
+    width: 100%; padding: 0.5rem; margin-bottom: 1rem;
+    border: 1px solid var(--border); border-radius: 4px;
     font-family: 'Open Sans', sans-serif;
   }
   button {
     background: var(--primary);
     color: white;
-    border: none;
-    padding: 0.5rem 1.25rem;
-    border-radius: 4px;
-    cursor: pointer;
-    font-family: 'Open Sans', sans-serif;
+    border: none; padding: 0.5rem 1.25rem;
+    border-radius: 4px; cursor: pointer;
+    font-family: 'Open Sans', sans-serif; font-weight: 600;
+    font-size: 1rem; transition: background 0.2s;
+  }
+  button:hover { background: #E05A1A; }
+
+  /* Orange top table */
+  .top-table th {
+    background: var(--primary);
+    color: white;
     font-weight: 600;
-    font-size: 1rem;
-    transition: background 0.2s;
   }
-  button:hover {
-    background: #E05A1A;
+
+  /* Green Add CURRENT Medication table */
+  .add-table th {
+    background: var(--add-primary);
+    color: white;
+    font-weight: 600;
   }
+  .add-table {
+    border-color: var(--add-primary);
+  }
+  /* Green +/- buttons inside Add CURRENT Medication table */
+  .add-table .qty-controls button {
+    background: var(--add-primary);
+    color: white;
+    border: none;
+  }
+  .add-table .qty-controls button:hover {
+    background: #218838; /* darker green on hover */
+  }
+
+  /* Green "Add Quantity" submit button under Add CURRENT Medication table */
+  .add-table + button,
+  .add-current-med button[type="submit"] {
+    background: var(--add-primary);
+    color: white;
+  }
+  .add-table + button:hover,
+  .add-current-med button[type="submit"]:hover {
+    background: #218838;
+  }
+
   /* New button style for Add CURRENT Medication section */
   form.add-current-med .add-search-btn {
     background: var(--add-primary);
@@ -353,88 +366,44 @@ function renderInventoryPage({
     font-size: 1.1rem;
     margin-bottom: 0.7rem;
   }
+
   table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 2rem;
-    background: white;
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-    border: 1px solid var(--border);
+    width: 100%; border-collapse: collapse; margin-bottom: 2rem;
+    background: white; border-radius: 8px; overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 1px solid var(--border);
   }
   th, td {
-    padding: 0.75rem 1rem;
-    text-align: left;
-    border-bottom: 1px solid var(--border);
-    vertical-align: middle;
-  }
-  th {
-    background: var(--primary);
-    color: white;
-    font-weight: 600;
+    padding: 0.75rem 1rem; text-align: left;
+    border-bottom: 1px solid var(--border); vertical-align: middle;
   }
   .qty-btn {
-    width: 3.5em;
-    text-align: center;
-    padding: 0.3rem;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    font-family: 'Open Sans', sans-serif;
+    width: 3.5em; text-align: center; padding: 0.3rem;
+    border: 1px solid var(--border); border-radius: 4px;
   }
-  .qty-controls {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
+  .qty-controls { display: flex; gap: 0.5rem; align-items: center; }
   .no-results {
-    background: white;
-    padding: 1rem;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-    text-align: center;
-    margin-bottom: 2rem;
-    border: 1px solid var(--border);
+    background: white; padding: 1rem; border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05); text-align: center;
+    margin-bottom: 2rem; border: 1px solid var(--border);
   }
-  .divider {
-    border-top: 4px solid var(--primary);
-    margin: 2rem 0 2rem 0;
-  }
+  .divider { border-top: 4px solid var(--primary); margin: 2rem 0; }
   .add-section-title {
-    text-align: center;
-    font-size: 1.3rem;
-    font-weight: 600;
-    margin-bottom: 1rem;
-    margin-top: 0.5rem;
+    text-align: center; font-size: 1.3rem; font-weight: 600;
+    margin-bottom: 1rem; margin-top: 0.5rem;
   }
-  /* Subsection titles */
   .subsection-title {
-    font-weight: 700;
-    font-size: 1.2rem;
-    margin-bottom: 1rem;
-    color: var(--add-primary);
-    border-bottom: 2px solid var(--add-primary);
+    font-weight: 700; font-size: 1.2rem; margin-bottom: 1rem;
+    color: var(--add-primary); border-bottom: 2px solid var(--add-primary);
     padding-bottom: 0.25rem;
   }
   @media (max-width: 768px) {
-    header {
-      text-align: center;
-      flex-direction: column;
-    }
-    .logo {
-      margin-bottom: 1rem;
-    }
-    table, form {
-      font-size: 0.9rem;
-    }
+    header { text-align: center; flex-direction: column; }
+    .logo { margin-bottom: 1rem; }
+    table, form { font-size: 0.9rem; }
   }
   footer {
-    text-align: center;
-    padding: 1.5rem 0;
-    background: #f9f9f9;
-    color: #666;
-    margin-top: 2rem;
-    font-size: 0.9rem;
+    text-align: center; padding: 1.5rem 0; background: #f9f9f9;
+    color: #666; margin-top: 2rem; font-size: 0.9rem;
     border-top: 1px solid var(--border);
   }
 </style>
@@ -446,42 +415,42 @@ function renderInventoryPage({
   </header>
 
   <div class="container">
-    <!-- Top search (remove meds) - excludes Past Medication -->
+    <!-- Top search -->
     <form action="/search" method="GET">
       <label>Search Medication Name</label>
       <input type="text" name="name" required value="${name}" />
       <button type="submit">Search</button>
     </form>
 
-    ${resultsSection}
+    <!-- Example top table wrapper -->
+    <div class="top-table-wrapper">
+      ${resultsSection.replace("<table", '<table class="top-table"')}
+    </div>
 
     <div style="margin-top: 23rem;">
       <div class="divider"></div>
-
       <div class="add-section-title">Add Medication to Our Inventory!</div>
 
-      <!-- Add CURRENT Medication subsection title -->
       <div class="subsection-title">Add CURRENT Medication</div>
-
-      <!-- Add Medication Search (Add CURRENT Medication) - styled green -->
       <form action="/quick-add" method="GET" class="add-current-med">
         <label>Search Medication Name</label>
-        <input type="text" name="name" id="quickAddNameInput" list="quickAddNamesList" required autocomplete="off" />
+        <input type="text" name="name" id="quickAddNameInput"
+               list="quickAddNamesList" required autocomplete="off" />
         <datalist id="quickAddNamesList"></datalist>
         <button type="submit" class="add-search-btn">Search</button>
       </form>
 
-      <div id="quickAddResults">${quickAddResultsSection}</div>
+      <div id="quickAddResults">
+        ${quickAddResultsSection.replace("<table", '<table class="add-table"')}
+      </div>
 
-      <!-- Add NEW Medication subsection title -->
       <div class="subsection-title" style="color: var(--primary); border-bottom-color: var(--primary); margin-top: 2rem;">
         Add NEW Medication
       </div>
-
-      <!-- Add NEW Medication form (uses standard orange theme) -->
       <form action="/add-medication" method="POST" class="add-new-med">
         <label>Medication Name</label>
-        <input type="text" name="name" id="medNameInput" list="medNamesList" required autocomplete="off" />
+        <input type="text" name="name" id="medNameInput"
+               list="medNamesList" required autocomplete="off" />
         <datalist id="medNamesList"></datalist>
 
         <label>Dose</label>
@@ -505,59 +474,56 @@ function renderInventoryPage({
     <p>© 2025 SLO Noor Foundation. All rights reserved.</p>
   </footer>
 
-  <script>
-    document.addEventListener("DOMContentLoaded", function () {
-      // Populate names for both med name inputs
-      fetch("/all-med-names")
-        .then(res => res.json())
-        .then(names => {
-          let datalist = document.getElementById("medNamesList");
-          datalist.innerHTML = "";
-          names.forEach(name => {
-            const opt = document.createElement("option");
-            opt.value = name;
-            datalist.appendChild(opt);
-          });
-          let quickAddList = document.getElementById("quickAddNamesList");
-          if (quickAddList) {
-            quickAddList.innerHTML = "";
-            names.forEach(name => {
-              const opt = document.createElement("option");
-              opt.value = name;
-              quickAddList.appendChild(opt);
-            });
-          }
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  fetch("/all-med-names")
+    .then(res => res.json())
+    .then(names => {
+      let datalist = document.getElementById("medNamesList");
+      datalist.innerHTML = "";
+      names.forEach(name => {
+        const opt = document.createElement("option");
+        opt.value = name;
+        datalist.appendChild(opt);
+      });
+      let quickAddList = document.getElementById("quickAddNamesList");
+      if (quickAddList) {
+        quickAddList.innerHTML = "";
+        names.forEach(name => {
+          const opt = document.createElement("option");
+          opt.value = name;
+          quickAddList.appendChild(opt);
         });
-
-      // Dose suggestions for Add NEW Medication form only
-      const medNameInput = document.getElementById("medNameInput");
-      const doseList = document.getElementById("doseList");
-      function fetchDoseSuggestions() {
-        const medName = medNameInput.value.trim();
-        doseList.innerHTML = "";
-        if (medName !== "") {
-          fetch("/doses-for-name?name=" + encodeURIComponent(medName))
-            .then(res => res.json())
-            .then(doses => {
-              doseList.innerHTML = "";
-              doses.forEach(dose => {
-                const opt = document.createElement("option");
-                opt.value = dose;
-                doseList.appendChild(opt);
-              });
-            });
-        }
-      }
-      medNameInput.addEventListener("input", fetchDoseSuggestions);
-      medNameInput.addEventListener("change", fetchDoseSuggestions);
-
-      // Scroll to quickAdd results if visible
-      const quickAddResults = document.getElementById("quickAddResults");
-      if (quickAddResults && quickAddResults.innerHTML.trim() !== "") {
-        quickAddResults.scrollIntoView({ behavior: "smooth" });
       }
     });
-  </script>
+
+  const medNameInput = document.getElementById("medNameInput");
+  const doseList = document.getElementById("doseList");
+  function fetchDoseSuggestions() {
+    const medName = medNameInput.value.trim();
+    doseList.innerHTML = "";
+    if (medName !== "") {
+      fetch("/doses-for-name?name=" + encodeURIComponent(medName))
+        .then(res => res.json())
+        .then(doses => {
+          doseList.innerHTML = "";
+          doses.forEach(dose => {
+            const opt = document.createElement("option");
+            opt.value = dose;
+            doseList.appendChild(opt);
+          });
+        });
+    }
+  }
+  medNameInput.addEventListener("input", fetchDoseSuggestions);
+  medNameInput.addEventListener("change", fetchDoseSuggestions);
+
+  const quickAddResults = document.getElementById("quickAddResults");
+  if (quickAddResults && quickAddResults.innerHTML.trim() !== "") {
+    quickAddResults.scrollIntoView({ behavior: "smooth" });
+  }
+});
+</script>
 </body>
 </html>
   `;
