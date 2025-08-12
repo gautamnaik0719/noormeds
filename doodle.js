@@ -179,6 +179,54 @@ async function getSheetData(sheetName, range = "A:D") {
   }
 }
 
+// Sort a given sheet by Location (column C) A→Z
+async function sortSheetByLocation(sheetName) {
+  try {
+    const resp = await sheets.spreadsheets.get({
+      spreadsheetId,
+      fields: "sheets.properties",
+    });
+    const sheet = resp.data.sheets.find(
+      (s) =>
+        s.properties.title.trim().toLowerCase() ===
+        sheetName.trim().toLowerCase(),
+    );
+    if (!sheet) {
+      console.error(`No sheet ID found for '${sheetName}'`);
+      return;
+    }
+
+    const sheetId = sheet.properties.sheetId;
+    const totalRows = sheet.properties.gridProperties.rowCount;
+
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      resource: {
+        requests: [
+          {
+            sortRange: {
+              range: {
+                sheetId,
+                startRowIndex: 1, // skip header row
+                endRowIndex: totalRows, // go to bottom of sheet
+                startColumnIndex: 0,
+                endColumnIndex: 4, // columns A–D
+              },
+              sortSpecs: [
+                { dimensionIndex: 2, sortOrder: "ASCENDING" }, // Location
+                { dimensionIndex: 0, sortOrder: "ASCENDING" }, // Name
+              ],
+            },
+          },
+        ],
+      },
+    });
+    console.log(`Sorted '${sheetName}' by Location`);
+  } catch (err) {
+    console.error(`Error sorting ${sheetName}:`, err);
+  }
+}
+
 // NEW: Fetch ordered location list from Location Catalog sheet (column A)
 async function getLocationCatalogOrder() {
   try {
@@ -817,6 +865,7 @@ app.post("/quick-add-update", async (req, res) => {
             values: [[item.name, item.dose, location, addQty]],
           },
         });
+        await sortSheetByLocation(targetSheet);
 
         await logActivity({
           action: "ADD",
@@ -970,6 +1019,7 @@ app.post("/add-medication", async (req, res) => {
       valueInputOption: "RAW",
       resource: { values: [[name, dose, location, quantity]] },
     });
+    await sortSheetByLocation(targetSheet);
     await logActivity({ action: "ADD", name, dose, location, quantity });
   }
   res.redirect("/");
