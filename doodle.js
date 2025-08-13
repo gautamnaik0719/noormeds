@@ -269,28 +269,61 @@ async function getFilteredData(searchName) {
   );
 }
 
+function isAngieMode(name) {
+  return name.startsWith("sparkles++");
+}
+function stripPlusPlus(name) {
+  return name.startsWith("sparkles++")
+    ? name.substring("sparkles++".length)
+    : name;
+}
+
+// Fetch meds from Angie Stash
+async function getAngiesStashFiltered(searchName) {
+  const data = await getSheetData("Angie Stash", "A:C"); // Name, Dose, Quantity
+  if (data.length < 2) return [];
+  return data
+    .slice(1)
+    .filter((row) =>
+      (row[0] || "").toLowerCase().includes(searchName.toLowerCase()),
+    )
+    .map((row, idx) => ({
+      sheetName: "Angie Stash",
+      rowIndex: idx + 2,
+      name: row[0] || "",
+      dose: row[1] || "",
+      location: "Angie Stash",
+      quantity: row[2] || "0",
+    }));
+}
+
 // Utility: Fetch meds from Past Medication matching search (for Add Med search)
-async function getPastMedicationFiltered(searchName) {
-  try {
-    const data = await getSheetData("Past Medication", "A:C"); // Name, Dose, Location
-    if (data.length < 2) return [];
-    const filtered = data
-      .slice(1)
-      .filter((row) =>
-        (row[0] || "").toLowerCase().includes(searchName.toLowerCase()),
-      )
-      .map((row, idx) => ({
-        rowIndex: idx + 2, // for deletion if gained quantity
-        name: row[0] || "",
-        dose: row[1] || "",
-        location: row[2] || "",
-        quantity: "0", // Past Meds have zero quantity, special case for Add
-      }));
-    return filtered;
-  } catch (error) {
-    console.error("Error fetching past medications:", error);
-    return [];
-  }
+async function getPastMedicationFiltered(searchName, angieMode = false) {
+  const data = await getSheetData("Past Medication", "A:C"); // Name, Dose, Location
+  if (data.length < 2) return [];
+  return data
+    .slice(1)
+    .filter((row) => {
+      const matchesName = (row[0] || "")
+        .toLowerCase()
+        .includes(searchName.toLowerCase());
+      if (!matchesName) return false;
+      const location = (row[2] || "").trim().toLowerCase();
+      if (angieMode) {
+        // only Angie Stash rows
+        return location === "angie stash";
+      } else {
+        // exclude Angie Stash rows
+        return location !== "angie stash";
+      }
+    })
+    .map((row, idx) => ({
+      rowIndex: idx + 2,
+      name: row[0] || "",
+      dose: row[1] || "",
+      location: row[2] || "",
+      quantity: "0",
+    }));
 }
 
 // Render page - full HTML (includes Add Medication search showing past meds with location dropdown)
@@ -633,8 +666,11 @@ app.get("/", async (req, res) => {
 
 // Search route — excludes Past Medication
 app.get("/search", async (req, res) => {
-  const { name } = req.query;
+  let { name } = req.query;
   if (!name) return res.redirect("/");
+
+  const angieMode = isAngieMode(name);
+  const cleanName = stripPlusPlus(name);
 
   const orderedLocations = await getLocationCatalogOrder();
   let locationOptions = orderedLocations
@@ -643,7 +679,12 @@ app.get("/search", async (req, res) => {
   if (!locationOptions)
     locationOptions = `<option value="">No locations available</option>`;
 
-  const data = await getFilteredData(name);
+  let data = angieMode
+    ? await getAngiesStashFiltered(cleanName)
+    : await getFilteredData(cleanName);
+
+  // pass cleanName to renderInventoryPage so "sparkles++" doesn’t show in the input
+
   let resultsSection = "";
   if (data.length > 0) {
     resultsSection = `
@@ -708,19 +749,36 @@ app.get("/quick-add", async (req, res) => {
   const { name } = req.query;
   if (!name) return res.redirect("/");
 
+  // Detect Angie mode and strip the sparkles++ key from the search string
+  const angieMode = isAngieMode(name);
+  const cleanName = stripPlusPlus(name);
+
+  // Build location dropdown from Location Catalog
   const orderedLocations = await getLocationCatalogOrder();
   let locationOptions = orderedLocations
     .map((loc) => `<option value="${loc}">${loc}</option>`)
     .join("");
-  if (!locationOptions)
+  if (!locationOptions) {
     locationOptions = `<option value="">No locations available</option>`;
+  }
 
-  const currentData = await getFilteredData(name);
-  const pastData = await getPastMedicationFiltered(name);
+  let currentData = [];
+  let pastData = [];
+
+  if (angieMode) {
+    // Current meds = ONLY Angie’s Stash
+    currentData = await getAngiesStashFiltered(cleanName);
+    // Past meds = only those in Past Medication with location === "Angie Stash"
+    pastData = await getPastMedicationFiltered(cleanName, true);
+  } else {
+    // Current meds = File Meds + Closet Meds
+    currentData = await getFilteredData(cleanName);
+    // Past meds = only those in Past Medication with location !== "Angie Stash"
+    pastData = await getPastMedicationFiltered(cleanName, false);
+  }
 
   // Build results table with both current + past meds
   let quickAddResultsSection = "";
-
   if (currentData.length > 0 || pastData.length > 0) {
     quickAddResultsSection = `
       <form id="quickAddForm" action="/quick-add-update" method="POST">
@@ -741,7 +799,6 @@ app.get("/quick-add", async (req, res) => {
                   <button type="button" onclick="quickDecQty(${i})">-</button>
                   <input type="number" min="0" value="0" id="addQty${i}" class="qty-btn" onchange="quickUpdateQty(${i})" />
                   <button type="button" onclick="quickIncQty(${i})">+</button>
-
                   <input type="hidden" name="items[${i}][sheetName]" value="${item.sheetName}" />
                   <input type="hidden" name="items[${i}][rowIndex]" value="${item.rowIndex}" />
                   <input type="hidden" name="items[${i}][name]" value="${item.name}" />
@@ -749,24 +806,24 @@ app.get("/quick-add", async (req, res) => {
                   <input type="hidden" name="items[${i}][location]" value="${item.location}" />
                   <input type="hidden" name="items[${i}][quantity]" value="${item.quantity}" />
                   <input type="hidden" name="items[${i}][addQty]" id="addQtyHidden${i}" value="0" />
+                  <input type="hidden" name="items[${i}][originalLocation]" value="${item.location}" />
                 </div>
               </td>
             </tr>
           `,
           )
           .join("")}
-
         ${pastData
           .map((item, idx) => {
             const index = currentData.length + idx; // continue index count
-            // Location dropdown HTML
             const locOptions = orderedLocations
               .map(
                 (loc) =>
-                  `<option value="${loc}"${loc === item.location ? " selected" : ""}>${loc}</option>`,
+                  `<option value="${loc}"${
+                    loc === item.location ? " selected" : ""
+                  }>${loc}</option>`,
               )
               .join("");
-
             return `
             <tr>
               <td>${item.name}</td>
@@ -782,19 +839,18 @@ app.get("/quick-add", async (req, res) => {
                   <button type="button" onclick="quickDecQty(${index})">-</button>
                   <input type="number" min="0" value="0" id="addQty${index}" class="qty-btn" onchange="quickUpdateQty(${index})" />
                   <button type="button" onclick="quickIncQty(${index})">+</button>
-
                   <input type="hidden" name="items[${index}][sheetName]" value="Past Medication" />
                   <input type="hidden" name="items[${index}][rowIndex]" value="${item.rowIndex}" />
                   <input type="hidden" name="items[${index}][name]" value="${item.name}" />
                   <input type="hidden" name="items[${index}][dose]" value="${item.dose}" />
                   <input type="hidden" name="items[${index}][quantity]" value="0" />
                   <input type="hidden" name="items[${index}][addQty]" id="addQtyHidden${index}" value="0" />
+                  <input type="hidden" name="items[${index}][originalLocation]" value="${item.location}" />
                 </div>
               </td>
             </tr>`;
           })
           .join("")}
-
       </table>
       <button type="submit">Add Quantity</button>
       </form>
@@ -823,7 +879,7 @@ app.get("/quick-add", async (req, res) => {
   res.send(
     renderInventoryPage({
       resultsSection: "",
-      name: "",
+      name, // keep original in the search bar
       locationOptions,
       quickAddResultsSection,
     }),
@@ -833,30 +889,97 @@ app.get("/quick-add", async (req, res) => {
 // Quick Add POST handler (updated to handle Past Medication removal if qty added)
 app.post("/quick-add-update", async (req, res) => {
   const { items } = req.body;
+  console.log(JSON.stringify(req.body, null, 2));
   if (!items || !Array.isArray(items)) return res.redirect("/");
 
   for (const idx in items) {
     const item = items[idx];
-    if (!item.sheetName || !item.rowIndex || !item.addQty) continue;
+    if (!item.name || !item.addQty) continue;
+
     const addQty = parseInt(item.addQty) || 0;
-    if (!addQty) continue;
+    if (addQty <= 0) continue;
 
-    const location = item.location || "";
+    const angieMode = isAngieMode(item.name);
+    const cleanName = stripPlusPlus(item.name);
 
+    // 🚀 Direct Angie mode (typed sparkles++)
+    if (angieMode) {
+      const angieData = await getAngiesStashFiltered(cleanName);
+      const existingMed = angieData.find(
+        (med) =>
+          med.name.toLowerCase() === cleanName.toLowerCase() &&
+          med.dose.toLowerCase() === (item.dose || "").toLowerCase(),
+      );
+
+      if (existingMed) {
+        const currentQty = parseInt(existingMed.quantity) || 0;
+        const newQty = currentQty + addQty;
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: `Angie Stash!C${existingMed.rowIndex}`, // ✅ Quantity column C
+          valueInputOption: "RAW",
+          resource: { values: [[newQty]] },
+        });
+      } else {
+        await sheets.spreadsheets.values.append({
+          spreadsheetId,
+          range: "Angie Stash!A:C",
+          valueInputOption: "RAW",
+          resource: { values: [[cleanName, item.dose, addQty]] },
+        });
+      }
+
+      await logActivity({
+        action: "ADD",
+        name: cleanName,
+        dose: item.dose,
+        location: "Angie Stash",
+        quantity: addQty,
+      });
+
+      continue;
+    }
+
+    // 🗂 Past Medication item
     if (item.sheetName === "Past Medication") {
-      // Remove from Past Medication before adding to File Meds
+      // Detect if original location is Angie Stash
+      console.log(item.originalLocation);
+      const isAngiePast =
+        (item.originalLocation || "").trim().toLowerCase() === "angie stash";
+
+      // Remove the row from Past Medication immediately
       await removeFromPastMedication({
         name: item.name,
         dose: item.dose,
-        location,
+        location: item.originalLocation,
       });
-      // Append to File Meds with addQty as quantity and location selected from dropdown
-      // Decide target sheet based on location text
-      const targetSheet = location.toLowerCase().includes("closet")
-        ? "Closet Meds"
-        : "File Meds";
 
-      try {
+      console.log(isAngiePast);
+      if (isAngiePast) {
+        console.log("Reached");
+        // Add directly to Angie Stash, ignoring location input
+        await sheets.spreadsheets.values.append({
+          spreadsheetId,
+          range: "Angie Stash!A:C",
+          valueInputOption: "RAW",
+          resource: {
+            values: [[item.name, item.dose, addQty]],
+          },
+        });
+        await logActivity({
+          action: "ADD",
+          name: item.name,
+          dose: item.dose,
+          location: "Angie Stash",
+          quantity: addQty,
+        });
+      } else {
+        const location = item.location || "";
+        // Normal behavior: add to File Meds or Closet Meds depending on location input
+        const targetSheet = location.toLowerCase().includes("closet")
+          ? "Closet Meds"
+          : "File Meds";
+
         await sheets.spreadsheets.values.append({
           spreadsheetId,
           range: `${targetSheet}!A:D`,
@@ -866,7 +989,6 @@ app.post("/quick-add-update", async (req, res) => {
           },
         });
         await sortSheetByLocation(targetSheet);
-
         await logActivity({
           action: "ADD",
           name: item.name,
@@ -874,31 +996,36 @@ app.post("/quick-add-update", async (req, res) => {
           location,
           quantity: addQty,
         });
-      } catch (error) {
-        console.error("Error adding medication from Past to File Meds:", error);
       }
-    } else {
-      // Normal quick add to existing inventory row
-      const currentQty = parseInt(item.quantity) || 0;
-      const newQty = currentQty + addQty;
-      try {
-        await sheets.spreadsheets.values.update({
-          spreadsheetId,
-          range: `${item.sheetName}!D${item.rowIndex}`,
-          valueInputOption: "RAW",
-          resource: { values: [[newQty]] },
-        });
-        await logActivity({
-          action: "ADD",
-          name: item.name,
-          dose: item.dose || "",
-          location,
-          quantity: addQty,
-        });
-      } catch (error) {
-        console.error("Quick Add error:", error);
-      }
+      continue;
     }
+    // 📊 Normal current stock update
+    const currentQty = parseInt(item.quantity) || 0;
+    const newQty = currentQty + addQty;
+
+    if (item.sheetName === "Angie Stash") {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `Angie Stash!C${item.rowIndex}`, // ✅ Quantity column C
+        valueInputOption: "RAW",
+        resource: { values: [[newQty]] },
+      });
+    } else {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `${item.sheetName}!D${item.rowIndex}`, // Normal: Quantity column D
+        valueInputOption: "RAW",
+        resource: { values: [[newQty]] },
+      });
+    }
+
+    await logActivity({
+      action: "ADD",
+      name: item.name,
+      dose: item.dose || "",
+      location: item.location || "",
+      quantity: addQty,
+    });
   }
 
   res.redirect("/");
@@ -958,12 +1085,23 @@ app.post("/update", async (req, res) => {
       }
     } else {
       try {
-        await sheets.spreadsheets.values.update({
-          spreadsheetId,
-          range: `${item.sheetName}!D${item.rowIndex}`,
-          valueInputOption: "RAW",
-          resource: { values: [[newQty]] },
-        });
+        if (item.sheetName === "Angie Stash") {
+          // Quantity in Angie Stash is column C
+          await sheets.spreadsheets.values.update({
+            spreadsheetId,
+            range: `Angie Stash!C${item.rowIndex}`,
+            valueInputOption: "RAW",
+            resource: { values: [[newQty]] },
+          });
+        } else {
+          // All other sheets: quantity is column D
+          await sheets.spreadsheets.values.update({
+            spreadsheetId,
+            range: `${item.sheetName}!D${item.rowIndex}`,
+            valueInputOption: "RAW",
+            resource: { values: [[newQty]] },
+          });
+        }
       } catch (error) {
         console.error("Error updating row:", error);
       }
@@ -974,7 +1112,27 @@ app.post("/update", async (req, res) => {
 
 // Add new medication or update existing (unchanged)
 app.post("/add-medication", async (req, res) => {
-  const { name, dose, location, quantity } = req.body;
+  let { name, dose, location, quantity } = req.body;
+  const angieMode = isAngieMode(name);
+  name = stripPlusPlus(name);
+
+  if (angieMode) {
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: "Angie Stash!A:C",
+      valueInputOption: "RAW",
+      resource: { values: [[name, dose, quantity]] },
+    });
+    await logActivity({
+      action: "ADD",
+      name,
+      dose,
+      location: "Angie Stash",
+      quantity,
+    });
+    return res.redirect("/");
+  }
+
   const sheetNames = ["File Meds", "Closet Meds"];
   let found = false;
   for (const sheetName of sheetNames) {
