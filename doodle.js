@@ -93,11 +93,13 @@ async function addToPastMedication({ name, dose, location }) {
   try {
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: "Past Medication!A:C",
+      range: "Past Medication!A:D",
       valueInputOption: "RAW",
       insertDataOption: "INSERT_ROWS",
       resource: {
-        values: [[name, dose, location]],
+        values: [
+          [name, dose, location, new Date().toISOString().split("T")[0]],
+        ],
       },
     });
   } catch (error) {
