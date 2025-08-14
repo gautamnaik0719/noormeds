@@ -33,6 +33,24 @@ try {
 }
 const sheets = google.sheets({ version: "v4", auth });
 
+// Your deployed Apps Script Web App URL:
+const webAppUrl =
+  "https://script.google.com/macros/s/AKfycbz7ns1ujzMgOqs2AKV-hKcmMYji-9qZecnVWG-qXS3ApttOKAw8zI8wgbm1GXbztDNQ/exec";
+
+async function triggerRestockListUpdate() {
+  try {
+    const url = webAppUrl;
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.error("Restock List update failed:", res.statusText);
+    } else {
+      console.log("✅ Restock List updated via Web App");
+    }
+  } catch (err) {
+    console.error("Error calling Restock List Web App:", err);
+  }
+}
+
 // Utility: Get sheet ID by name (robust to invisible/trailing spaces and case)
 async function getSheetIdByName(sheetName) {
   try {
@@ -1030,6 +1048,7 @@ app.post("/quick-add-update", async (req, res) => {
     });
   }
 
+  await triggerRestockListUpdate();
   res.redirect("/");
 });
 
@@ -1109,6 +1128,7 @@ app.post("/update", async (req, res) => {
       }
     }
   }
+  await triggerRestockListUpdate();
   res.redirect("/");
 });
 
@@ -1132,6 +1152,7 @@ app.post("/add-medication", async (req, res) => {
       location: "Angie Stash",
       quantity,
     });
+    await triggerRestockListUpdate();
     return res.redirect("/");
   }
 
