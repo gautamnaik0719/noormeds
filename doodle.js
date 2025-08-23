@@ -290,31 +290,35 @@ async function getFilteredData(searchName) {
 }
 
 function isAngieMode(name) {
-  return name.startsWith("sparkles++");
+  return (name || "").toLowerCase().startsWith("sparkles++");
 }
+
 function stripPlusPlus(name) {
-  return name.startsWith("sparkles++")
-    ? name.substring("sparkles++".length)
-    : name;
+  const lower = (name || "").toLowerCase();
+  if (lower.startsWith("sparkles++")) {
+    return name.substring("sparkles++".length);
+  }
+  return name;
 }
 
 // Fetch meds from Angie Stash
 async function getAngiesStashFiltered(searchName) {
   const data = await getSheetData("Angie Stash", "A:C"); // Name, Dose, Quantity
   if (data.length < 2) return [];
+  // Start at 1 to skip header; index tracks actual row in sheet minus 1
   return data
     .slice(1)
-    .filter((row) =>
-      (row[0] || "").toLowerCase().includes(searchName.toLowerCase()),
-    )
-    .map((row, idx) => ({
+    .map((row, index) => ({
       sheetName: "Angie Stash",
-      rowIndex: idx + 2,
+      rowIndex: index + 2, // actual Google Sheet row
       name: row[0] || "",
       dose: row[1] || "",
       location: "Angie Stash",
       quantity: row[2] || "0",
-    }));
+    }))
+    .filter((item) =>
+      item.name.toLowerCase().includes(searchName.toLowerCase()),
+    );
 }
 
 // Utility: Fetch meds from Past Medication matching search (for Add Med search)
@@ -686,6 +690,7 @@ app.get("/", async (req, res) => {
 
 // Search route — excludes Past Medication
 app.get("/search", async (req, res) => {
+  console.log("running search");
   let { name } = req.query;
   if (!name) return res.redirect("/");
 
@@ -766,6 +771,7 @@ app.get("/search", async (req, res) => {
 
 // Quick Add (Add Medication search) includes Past Medication meds with location dropdown
 app.get("/quick-add", async (req, res) => {
+  console.log("running quick-add");
   const { name } = req.query;
   if (!name) return res.redirect("/");
 
@@ -908,6 +914,7 @@ app.get("/quick-add", async (req, res) => {
 
 // Quick Add POST handler (updated to handle Past Medication removal if qty added)
 app.post("/quick-add-update", async (req, res) => {
+  console.log("running quick-add-update");
   const { items } = req.body;
   console.log(JSON.stringify(req.body, null, 2));
   if (!items || !Array.isArray(items)) return res.redirect("/");
@@ -924,23 +931,32 @@ app.post("/quick-add-update", async (req, res) => {
 
     // 🚀 Direct Angie mode (typed sparkles++)
     if (angieMode) {
-      const angieData = await getAngiesStashFiltered(cleanName);
-      const existingMed = angieData.find(
-        (med) =>
-          med.name.toLowerCase() === cleanName.toLowerCase() &&
-          med.dose.toLowerCase() === (item.dose || "").toLowerCase(),
-      );
-
-      if (existingMed) {
-        const currentQty = parseInt(existingMed.quantity) || 0;
-        const newQty = currentQty + addQty;
-        await sheets.spreadsheets.values.update({
-          spreadsheetId,
-          range: `Angie Stash!C${existingMed.rowIndex}`, // ✅ Quantity column C
-          valueInputOption: "RAW",
-          resource: { values: [[newQty]] },
-        });
-      } else {
+      // Get all rows from Angie Stash sheet
+      const data = await getSheetData("Angie Stash", "A:C");
+      let found = false;
+      for (let index = 1; index < data.length; index++) {
+        // Start at 1 to skip header
+        const row = data[index];
+        if (
+          (row[0] || "").toLowerCase() === cleanName.toLowerCase() &&
+          normalizeDose(row[1]) === normalizeDose(item.dose)
+        ) {
+          // Found exact match on name and normalized dose, update this row
+          const apiRow = index + 1; // Sheet rows start at 1
+          const currentQty = parseInt(row[2]) || 0;
+          const newQty = currentQty + addQty;
+          await sheets.spreadsheets.values.update({
+            spreadsheetId,
+            range: `Angie Stash!C${apiRow}`, // Quantity is always column C
+            valueInputOption: "RAW",
+            resource: { values: [[newQty]] },
+          });
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        // Not found: add new row
         await sheets.spreadsheets.values.append({
           spreadsheetId,
           range: "Angie Stash!A:C",
@@ -956,7 +972,6 @@ app.post("/quick-add-update", async (req, res) => {
         location: "Angie Stash",
         quantity: addQty,
       });
-
       continue;
     }
 
@@ -1055,6 +1070,7 @@ app.post("/quick-add-update", async (req, res) => {
 // Remove/Use Medications - unchanged
 app.post("/update", async (req, res) => {
   const { items } = req.body;
+  console.log("running update");
   if (!items || !Array.isArray(items))
     return res.status(400).send("No items to update");
   for (const item of items) {
@@ -1081,6 +1097,7 @@ app.post("/update", async (req, res) => {
         });
         const sheetId = await getSheetIdByName(item.sheetName);
         if (sheetId === undefined || sheetId === null) continue;
+        console.log(item.rowIndex);
         await sheets.spreadsheets.batchUpdate({
           spreadsheetId,
           resource: {
@@ -1106,14 +1123,32 @@ app.post("/update", async (req, res) => {
       }
     } else {
       try {
+        console.log("checkpoint1");
         if (item.sheetName === "Angie Stash") {
-          // Quantity in Angie Stash is column C
-          await sheets.spreadsheets.values.update({
-            spreadsheetId,
-            range: `Angie Stash!C${item.rowIndex}`,
-            valueInputOption: "RAW",
-            resource: { values: [[newQty]] },
-          });
+          console.log("checkpoint");
+          // Find the true row index by scanning the raw sheet!
+          const data = await getSheetData("Angie Stash", "A:C");
+          let updated = false;
+          for (let index = 1; index < data.length; index++) {
+            // skip header
+            const row = data[index];
+            if (
+              (row[0] || "").toLowerCase() ===
+                (item.name || "").toLowerCase() &&
+              normalizeDose(row[1]) === normalizeDose(item.dose)
+            ) {
+              const apiRow = index + 1;
+              console.log([index, apiRow, row]);
+              await sheets.spreadsheets.values.update({
+                spreadsheetId,
+                range: `Angie Stash!C${apiRow}`,
+                valueInputOption: "RAW",
+                resource: { values: [[newQty]] },
+              });
+              updated = true;
+              break;
+            }
+          }
         } else {
           // All other sheets: quantity is column D
           await sheets.spreadsheets.values.update({
@@ -1134,6 +1169,7 @@ app.post("/update", async (req, res) => {
 
 // Add new medication or update existing (unchanged)
 app.post("/add-medication", async (req, res) => {
+  console.log("running add-medication");
   let { name, dose, location, quantity } = req.body;
   const angieMode = isAngieMode(name);
   name = stripPlusPlus(name);
